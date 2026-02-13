@@ -24,6 +24,8 @@ NC='\033[0m'
 # Global variables
 DEBUG_MODE=false
 PROVIDER_MODE="auto"
+PROXY_MODE=""
+PROXY_PORT=""
 SPECIFIC_MODEL=""
 SPECIFIC_TYPE=""
 LIST_MODELS=false
@@ -561,6 +563,22 @@ handle_command() {
     esac
 }
 
+# ==================== PROXY COMMANDS ====================
+
+proxy_start() {
+    local port="${1:-11999}"
+    echo "Starting AIDO Proxy on port $port..."
+    python3 "$SCRIPT_DIR/proxy/server.py" start --port "$port"
+}
+
+proxy_stop() {
+    python3 "$SCRIPT_DIR/proxy/server.py" stop
+}
+
+proxy_status() {
+    python3 "$SCRIPT_DIR/proxy/server.py" status
+}
+
 # ==================== CLI PARSING ====================
 
 parse_arguments() {
@@ -581,6 +599,16 @@ parse_arguments() {
             --list-providers) LIST_PROVIDERS=true; shift ;;
             --install) INSTALL_MODE=true; shift ;;
             --uninstall) UNINSTALL_MODE=true; shift ;;
+            proxy|--proxy)
+                PROXY_MODE="${2:-}"
+                [ -n "$PROXY_MODE" ] && [ "${PROXY_MODE:0:1}" != "-" ] && shift
+                [ -n "${2:-}" ] && [ "${2:0:1}" = "-" ] && PROXY_MODE=""
+                shift
+                ;;
+            --port)
+                PROXY_PORT="$2"
+                shift 2
+                ;;
             --help|-h) show_help; exit 0 ;;
             -*) error "Unknown: $1"; show_help; exit 1 ;;
             *) QUERY="$*"; break ;;
@@ -605,12 +633,18 @@ show_help() {
     echo "  --config                 Show config"
     echo "  --interactive, -i        Interactive mode"
     echo "  --list-providers         List providers"
-    echo "  --help, -h              Help"
+    echo ""
+    echo "Proxy Commands:"
+    echo "  aido proxy start         Start proxy server"
+    echo "  aido proxy stop          Stop proxy server"
+    echo "  aido proxy status        Check proxy status"
     echo ""
     echo "Examples:"
     echo "  aido 'Hello'                   # Auto mode"
     echo "  aido -p ollama 'Hello'         # Use Ollama"
     echo "  aido -p dmr 'Hello'            # Use Docker Model Runner"
+    echo "  aido proxy start               # Start proxy on port 11999"
+    echo "  aido proxy start --port 8080   # Start on custom port"
 }
 
 show_status() {
@@ -631,6 +665,40 @@ show_providers() {
 # ==================== MAIN ====================
 
 main() {
+    # Handle proxy commands first (before any other args)
+    for i in "$@"; do
+        case "$i" in
+            proxy|proxy\ *)
+                PROXY_MODE="start"
+                ;;
+        esac
+    done
+    
+    # Check for proxy subcommand
+    if [ "$1" = "proxy" ]; then
+        PROXY_MODE="${2:-start}"
+        PROXY_PORT="${4:-11999}"
+        
+        case "$PROXY_MODE" in
+            start)
+                proxy_start "$PROXY_PORT"
+                exit $?
+                ;;
+            stop)
+                proxy_stop
+                exit $?
+                ;;
+            status)
+                proxy_status
+                exit $?
+                ;;
+            *)
+                echo "Usage: aido proxy [start|stop|status] [--port PORT]"
+                exit 1
+                ;;
+        esac
+    fi
+    
     for arg in "$@"; do
         case "$arg" in
             --install|--install=yes) INSTALL_MODE=true ;;
