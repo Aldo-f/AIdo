@@ -72,7 +72,10 @@ run_test() {
 }
 
 # Tests
-test_help() { HOME="$TEST_DATA_DIR" bash "$AIDO_SCRIPT" --help 2>&1 | grep -q "Usage:"; }
+test_help() { 
+    output=$(HOME="$TEST_DATA_DIR" bash "$AIDO_SCRIPT" --help 2>&1)
+    grep -q "Usage:" <<< "$output"
+}
 test_help_short() { return 0; }  # Covered by test_help
 test_version() { run_aido --help >/dev/null 2>&1; }
 

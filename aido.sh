@@ -49,7 +49,10 @@ MODEL_LIST_AVAILABLE=false
 # ==================== OLLAMA DETECTION ====================
 
 detect_ollama_install() {
-    if command -v ollama >/dev/null 2>&1; then
+    # Check for Docker container first
+    if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
+        echo "docker"
+    elif command -v ollama >/dev/null 2>&1; then
         echo "cli"
     elif [ -f "/usr/local/bin/ollama" ]; then
         echo "binary"
@@ -76,6 +79,15 @@ install_model() {
                 return 1
             fi
             ;;
+        docker)
+            info "Installing $model via Docker..."
+            if docker exec ollama ollama pull "$model" 2>/dev/null; then
+                success "Installed: $model"
+            else
+                error "Failed to install $model"
+                return 1
+            fi
+            ;;
         binary|home)
             info "Ollama binary found at $HOME/ollama or /usr/local/bin"
             info "Run 'ollama pull $model' to install models"
@@ -96,7 +108,7 @@ install_recommended_models() {
     local install_type
     install_type=$(detect_ollama_install)
     
-    if [ "$install_type" != "cli" ]; then
+    if [ "$install_type" = "service" ]; then
         error "Ollama CLI not available"
         info "To install models, install Ollama from: https://ollama.com"
         echo ""
@@ -104,14 +116,33 @@ install_recommended_models() {
         return 1
     fi
     
+    if [ "$install_type" = "docker" ]; then
+        info "Ollama detected in Docker"
+    fi
+    
+    local cli_cmd=""
     local models=("llama3.2:latest" "codellama:latest" "mistral:latest")
+    
+    case "$install_type" in
+        cli)
+            cli_cmd="ollama"
+            ;;
+        docker)
+            cli_cmd="docker exec ollama ollama"
+            ;;
+        binary|home)
+            info "Ollama binary found locally"
+            info "Run 'ollama pull <model>' to install models"
+            return 1
+            ;;
+    esac
     
     echo -e "${CYAN}Installing recommended models...${NC}"
     echo ""
     
     for model in "${models[@]}"; do
         info "Installing $model..."
-        if ollama pull "$model" 2>/dev/null; then
+        if eval "$cli_cmd pull $model" 2>/dev/null; then
             success "$model installed"
         else
             warning "Failed to install $model (may already be installed or unavailable)"
