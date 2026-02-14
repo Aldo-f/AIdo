@@ -29,12 +29,34 @@ setup() {
     cat > "$TEST_DATA_DIR/.aido-data/config.json" << 'EOF'
 {
   "providers": {
-    "ollama": {"enabled": true, "priority": 1, "endpoint": "http://localhost:11434"},
-    "docker-model-runner": {"enabled": true, "priority": 2, "endpoint": "http://localhost:12434"},
-    "cloud": {"enabled": false, "priority": 3, "endpoint": "https://api.openai.com"}
+    "ollama": {
+      "enabled": true,
+      "endpoint": "http://localhost:11434",
+      "keys": []
+    },
+    "docker-model-runner": {
+      "enabled": true,
+      "endpoint": "http://localhost:12434",
+      "keys": []
+    },
+    "opencode-zen": {
+      "enabled": true,
+      "endpoint": "https://api.opencode.ai",
+      "keys": []
+    },
+    "gemini": {
+      "enabled": true,
+      "endpoint": "https://generativelanguage.googleapis.com",
+      "keys": []
+    },
+    "cloud": {
+      "enabled": false,
+      "endpoint": "https://api.openai.com",
+      "keys": []
+    }
   },
   "selection": {"default_mode": "auto"},
-  "ui": {"debug_mode": false, "show_timing": true}
+  "ui": {"debug_mode": false}
 }
 EOF
 }
@@ -118,6 +140,26 @@ test_session_delete() {
     return 0
 }
 
+# Key Management Tests
+test_key_list() {
+    output=$(run_aido key list 2>&1)
+    assert_contains "$output" "opencode-zen"
+}
+
+test_key_add() {
+    run_aido key add opencode-zen test-key-1234 "test-key" >/dev/null 2>&1
+    output=$(run_aido key list 2>&1)
+    assert_contains "$output" "test-key"
+}
+
+test_key_add_alias() {
+    run_aido key add zen test-key-alias >/dev/null 2>&1
+    output=$(run_aido key list 2>&1)
+    assert_contains "$output" "opencode-zen"
+    # Key name shows last 4 chars, so "lias" from "test-key-alias"
+    assert_contains "$output" "lias"
+}
+
 test_provider_auto() {
     output=$(timeout 5 run_aido --debug --auto "test" 2>&1 || true)
     # Should show auto mode
@@ -141,6 +183,35 @@ test_debug_flag() {
 
 test_unknown_option() {
     ! run_aido --unknown-option 2>&1 | grep -q "Unknown" || return 0
+}
+
+test_run_single_quote() {
+    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    }
+    timeout 30 run_aido run 'Hello' 2>/dev/null
+}
+
+test_run_double_quote() {
+    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    }
+    timeout 30 run_aido run "Hello" 2>/dev/null
+}
+
+test_run_no_quote() {
+    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    }
+    timeout 30 run_aido run Hello 2>/dev/null
+}
+
+test_run_without_run_fails() {
+    output=$(run_aido Hello 2>&1 || true)
+    assert_contains "$output" "Unknown command"
 }
 
 # Proxy tests (use real system, not test home)
@@ -205,6 +276,11 @@ main() {
     run_test test_session_list
     run_test test_session_delete
     
+    echo -e "${BLUE}Key Management:${NC}"
+    run_test test_key_list
+    run_test test_key_add
+    run_test test_key_add_alias
+    
     echo -e "${BLUE}Providers:${NC}"
     run_test test_provider_auto
     run_test test_provider_ollama
@@ -215,6 +291,12 @@ main() {
     
     echo -e "${BLUE}Error Handling:${NC}"
     run_test test_unknown_option
+
+    echo -e "${BLUE}Run Command:${NC}"
+    run_test test_run_single_quote
+    run_test test_run_double_quote
+    run_test test_run_no_quote
+    run_test test_run_without_run_fails
     
     echo -e "${BLUE}Proxy:${NC}"
     run_test test_proxy_running

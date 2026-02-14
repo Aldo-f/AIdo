@@ -389,6 +389,18 @@ show_auth_providers() {
     echo "Usage: aido auth <provider>"
 }
 
+normalize_provider_name() {
+    local provider="$1"
+    case "$provider" in
+        zen) echo "opencode-zen" ;;
+        ollama) echo "ollama" ;;
+        dmr|docker-model-runner) echo "docker-model-runner" ;;
+        openai|cloud) echo "cloud" ;;
+        opencode-zen|gemini) echo "$provider" ;;
+        *) echo "$provider" ;;
+    esac
+}
+
 handle_key_command() {
     local action="${2:-list}"
     local provider="${3:-}"
@@ -491,10 +503,7 @@ add_key() {
     local key="$2"
     local name="${3:-default}"
     
-    # Normalize provider names
-    case "$provider" in
-        zen) provider="opencode-zen" ;;
-    esac
+    provider=$(normalize_provider_name "$provider")
     
     local config
     config=$(cat "$DATA_DIR/config.json")
@@ -519,10 +528,7 @@ delete_key() {
     local provider="$1"
     local index="$2"
     
-    # Normalize provider names
-    case "$provider" in
-        zen) provider="opencode-zen" ;;
-    esac
+    provider=$(normalize_provider_name "$provider")
     
     local config
     config=$(cat "$DATA_DIR/config.json")
@@ -563,10 +569,7 @@ delete_all_keys() {
 test_keys() {
     local provider="$1"
     
-    # Normalize provider names
-    case "$provider" in
-        zen) provider="opencode-zen" ;;
-    esac
+    provider=$(normalize_provider_name "$provider")
     
     echo -e "${CYAN}Testing keys for $provider...${NC}"
     echo ""
@@ -1353,6 +1356,22 @@ show_providers() {
 # ==================== MAIN ====================
 
 main() {
+    # Initialize all option flags
+    DEBUG_MODE=false
+    INSTALL_MODE=false
+    UNINSTALL_MODE=false
+    SHOW_CONFIG=false
+    LIST_PROVIDERS=false
+    SHOW_STATUS=false
+    LIST_MODELS=false
+    LIST_SESSIONS=false
+    INTERACTIVE_MODE=false
+    RUN_MODE=false
+    DELETE_SESSION=""
+    LOAD_SESSION=""
+    NEW_SESSION=""
+    QUERY=""
+    
     # Handle proxy commands first (before any other args)
     for i in "$@"; do
         case "$i" in
@@ -1461,15 +1480,17 @@ main() {
         exit $?
     fi
     
+    RUN_MODE=false
+
     # Check for run subcommand
     if [ "$1" = "run" ]; then
+        RUN_MODE=true
         shift
         handle_run_command "$@"
-        exit $?
     fi
-    
+
     # Check for session subcommand
-    if [ "$1" = "session" ]; then
+    if [[ $# -gt 0 ]] && [ "$1" = "session" ]; then
         handle_session_command "$@"
         exit $?
     fi
@@ -1486,7 +1507,10 @@ main() {
     
     init_data_dir
     load_config
-    parse_arguments "$@"
+
+    if [ "$RUN_MODE" = false ]; then
+        parse_arguments "$@"
+    fi
     
     [ "$SHOW_CONFIG" = true ] && { cat "$DATA_DIR/config.json" | jq '.'; exit 0; }
     [ "$LIST_PROVIDERS" = true ] && { show_providers; exit 0; }
