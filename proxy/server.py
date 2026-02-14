@@ -18,12 +18,19 @@ from urllib.parse import urlparse, parse_qs
 import urllib.request
 import urllib.error
 
+# Add proxy directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+import database
+
 # Configuration
 DEFAULT_PORT = 11999
 DATA_DIR = Path(os.path.expanduser("~/.aido-data"))
 CONFIG_FILE = DATA_DIR / "config.json"
 PID_FILE = DATA_DIR / "aido-proxy.pid"
 LOG_FILE = DATA_DIR / "logs" / "proxy.log"
+
+# Initialize database
+database.init_db()
 
 # Check both DATA_DIR and SCRIPT_DIR for config
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -192,12 +199,70 @@ def analyze_prompt(prompt):
     return capabilities
 
 
+def classify_with_model(prompt, model="llama3.2:latest"):
+    """Use a lightweight model to classify the query type
+
+    Returns: coding, general, vision, reasoning
+    """
+    classification_prompt = f"""Classify this query. Reply with only ONE word:
+- coding: for programming, debugging, code questions
+- vision: for image, visual, diagram questions  
+- reasoning: for complex analysis, comparison, thinking
+- general: for simple questions
+
+Query: {prompt[:200]}
+
+Reply with only one word:"""
+
+    try:
+        result = forward_request(
+            OLLAMA_ENDPOINT,
+            "/api/generate",
+            json.dumps(
+                {
+                    "model": model,
+                    "prompt": classification_prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1},
+                }
+            ),
+        )
+
+        response = json.loads(result)
+        content = response.get("response", "").strip().lower()
+
+        classification = content.split()[0] if content else "general"
+
+        if classification in ["coding", "vision", "reasoning", "general"]:
+            return classification
+
+        if "code" in content or "program" in content:
+            return "coding"
+        if "image" in content or "visual" in content:
+            return "vision"
+        if "think" in content or "analyz" in content or "reason" in content:
+            return "reasoning"
+
+        return "general"
+
+    except Exception as e:
+        log(f"Model classification failed: {e}", "WARN")
+        return "general"
+
+
 def select_model(prompt, provider_hint=None):
     """Select best model for the given prompt"""
     log(f"Selecting model for prompt (length: {len(prompt)} chars)")
     available = detect_providers()
     preference = get_model_preference()
     log(f"Model preference: {preference}")
+
+    failed_models = database.get_failed_models(min_failures=2, hours=1)
+    failed_model_names = [m["model_name"] for m in failed_models]
+    if failed_model_names:
+        log(f"Skipping failed models: {failed_model_names}")
+    else:
+        failed_model_names = []
 
     if not available or all(p.get("status") != "running" for p in available.values()):
         log("No providers running, attempting fallback to llama3.2", "ERROR")
@@ -211,6 +276,9 @@ def select_model(prompt, provider_hint=None):
     for name, info in available.items():
         if info.get("status") == "running" and info.get("models"):
             models = info["models"]
+
+            # Filter out failed models
+            models = [m for m in models if m not in failed_model_names]
 
             if preference == "local_first":
                 # Filter: prefer local models first
@@ -470,6 +538,8 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
 
             log(f"[{request_id}] Using model: {model} (provider: {provider})")
 
+            request_start_time = datetime.datetime.now()
+
             # Forward to provider (Ollama format)
             if provider == "ollama":
                 api_mode = get_api_mode()
@@ -523,6 +593,24 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                             ],
                         }
                         log(f"[{request_id}] Response: {response_content[:100]}...")
+
+                        duration_ms = int(
+                            (
+                                datetime.datetime.now() - request_start_time
+                            ).total_seconds()
+                            * 1000
+                        )
+                        database.log_query(
+                            query_text=user_message[:500],
+                            query_summary=database.summarize_query(user_message),
+                            model_used=model,
+                            provider=str(provider or "unknown"),
+                            api_mode=api_mode,
+                            response_time_ms=duration_ms,
+                            response_length=len(response_content),
+                            success=True,
+                        )
+
                         self.send_json(response)
                         return
                     except Exception as e:
@@ -585,6 +673,24 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                             ],
                         }
                         log(f"[{request_id}] Response: {response_content[:100]}...")
+
+                        duration_ms = int(
+                            (
+                                datetime.datetime.now() - request_start_time
+                            ).total_seconds()
+                            * 1000
+                        )
+                        database.log_query(
+                            query_text=user_message[:500],
+                            query_summary=database.summarize_query(user_message),
+                            model_used=model,
+                            provider=str(provider or "unknown"),
+                            api_mode=api_mode,
+                            response_time_ms=duration_ms,
+                            response_length=len(response_content),
+                            success=True,
+                        )
+
                         self.send_json(response)
                         return
                     except Exception as e:
@@ -615,6 +721,31 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                             continue
                         self.send_json(result_check, 500)
                         return
+                except:
+                    pass
+
+                # Log to database for DMR
+                try:
+                    dmr_response = json.loads(result)
+                    response_content = (
+                        dmr_response.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                    )
+                    duration_ms = int(
+                        (datetime.datetime.now() - request_start_time).total_seconds()
+                        * 1000
+                    )
+                    database.log_query(
+                        query_text=user_message[:500],
+                        query_summary=database.summarize_query(user_message),
+                        model_used=model,
+                        provider=str(provider or "unknown"),
+                        api_mode="chat",
+                        response_time_ms=duration_ms,
+                        response_length=len(response_content),
+                        success=True,
+                    )
                 except:
                     pass
 
