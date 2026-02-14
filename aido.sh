@@ -453,6 +453,11 @@ show_keys() {
     providers=$(echo "$config" | jq -r '.providers | keys[]')
     
     for prov in $providers; do
+        # Skip deprecated provider names
+        if [ "$prov" = "zen" ]; then
+            continue
+        fi
+        
         local keys
         keys=$(echo "$config" | jq -r ".providers.\"$prov\".keys // []")
         local key_count
@@ -486,6 +491,11 @@ add_key() {
     local key="$2"
     local name="${3:-default}"
     
+    # Normalize provider names
+    case "$provider" in
+        zen) provider="opencode-zen" ;;
+    esac
+    
     local config
     config=$(cat "$DATA_DIR/config.json")
     
@@ -508,6 +518,11 @@ add_key() {
 delete_key() {
     local provider="$1"
     local index="$2"
+    
+    # Normalize provider names
+    case "$provider" in
+        zen) provider="opencode-zen" ;;
+    esac
     
     local config
     config=$(cat "$DATA_DIR/config.json")
@@ -547,6 +562,11 @@ delete_all_keys() {
 
 test_keys() {
     local provider="$1"
+    
+    # Normalize provider names
+    case "$provider" in
+        zen) provider="opencode-zen" ;;
+    esac
     
     echo -e "${CYAN}Testing keys for $provider...${NC}"
     echo ""
