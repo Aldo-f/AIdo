@@ -80,17 +80,17 @@ test_help_short() { return 0; }  # Covered by test_help
 test_version() { run_aido --help >/dev/null 2>&1; }
 
 test_status() {
-    output=$(run_aido --status 2>&1)
+    output=$(run_aido status 2>&1)
     assert_contains "$output" "AIDO Status"
 }
 
 test_list_providers() {
-    output=$(run_aido --list-providers 2>&1)
+    output=$(run_aido providers 2>&1)
     assert_contains "$output" "ollama"
 }
 
 test_list_models() {
-    output=$(run_aido --list 2>&1)
+    output=$(run_aido list 2>&1)
     # May be empty if no models available
     return 0
 }
@@ -101,20 +101,20 @@ test_show_config() {
 }
 
 test_session_create() {
-    run_aido --new-session test-session >/dev/null 2>&1
+    run_aido session new test-session >/dev/null 2>&1
     [ -f "$TEST_DATA_DIR/.aido-data/sessions/session-test-session.json" ]
 }
 
 test_session_list() {
-    run_aido --new-session list-test >/dev/null 2>&1
-    output=$(run_aido --list-sessions 2>&1)
+    run_aido session new list-test >/dev/null 2>&1
+    output=$(run_aido session list 2>&1)
     # May be empty or have session
     return 0
 }
 
 test_session_delete() {
-    run_aido --new-session delete-me >/dev/null 2>&1
-    run_aido --delete-session session-delete-me >/dev/null 2>&1
+    run_aido session new delete-me >/dev/null 2>&1
+    run_aido session delete session-delete-me >/dev/null 2>&1
     return 0
 }
 

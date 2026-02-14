@@ -24,28 +24,12 @@ NC='\033[0m'
 # Global variables
 DEBUG_MODE=false
 PROVIDER_MODE="auto"
-PROXY_MODE=""
 PROXY_PORT=""
-OPENCODE_MODE=""
 SPECIFIC_MODEL=""
-SPECIFIC_TYPE=""
-LIST_MODELS=false
-SHOW_STATUS=false
 SHOW_CONFIG=false
-INTERACTIVE_MODE=false
-NEW_SESSION=""
-LOAD_SESSION=""
-LIST_SESSIONS=false
-DELETE_SESSION=""
-REFRESH_CACHE=false
 QUERY=""
 INSTALL_MODE=false
 UNINSTALL_MODE=false
-LIST_PROVIDERS=false
-MODELS_MODE=false
-INSTALL_MODELS_MODE=false
-SPECIFIC_MODELS_TO_INSTALL=""
-MODEL_LIST_AVAILABLE=false
 
 # ==================== OLLAMA DETECTION ====================
 
@@ -754,8 +738,7 @@ handle_session_command() {
                 echo "Usage: aido session new <name>"
                 exit 1
             fi
-            NEW_SESSION="$session_name"
-            echo "Created session: $session_name"
+            create_session "$session_name"
             ;;
         delete)
             if [ -z "$session_name" ]; then
@@ -1280,54 +1263,15 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --debug|-d) DEBUG_MODE=true; shift ;;
-            --provider|-p) PROVIDER_MODE="$2"; shift 2 ;;
-            --model|-m) SPECIFIC_MODEL="$2"; shift 2 ;;
-            --auto) PROVIDER_MODE="auto"; shift ;;
-            --list|-l) LIST_MODELS=true; shift ;;
-            --status|-s) SHOW_STATUS=true; shift ;;
-            --config) SHOW_CONFIG=true; shift ;;
-            --interactive|-i) INTERACTIVE_MODE=true; shift ;;
-            --new-session) NEW_SESSION="${2:-}"; [ -n "$NEW_SESSION" ] && shift; shift ;;
-            --load-session) LOAD_SESSION="$2"; shift 2 ;;
-            --list-sessions) LIST_SESSIONS=true; shift ;;
-            --delete-session) DELETE_SESSION="$2"; shift 2 ;;
-            --list-providers) LIST_PROVIDERS=true; shift ;;
             --install) INSTALL_MODE=true; shift ;;
             --uninstall) UNINSTALL_MODE=true; shift ;;
-            models|--models)
-                MODELS_MODE="${2:-}"
-                if [ -n "$MODELS_MODE" ] && [ "${MODELS_MODE:0:1}" != "-" ]; then
-                    shift
-                else
-                    MODELS_MODE="list"
-                fi
-                if [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
-                    SPECIFIC_MODELS_TO_INSTALL="$2"
-                    shift
-                fi
-                shift
-                ;;
-            proxy|--proxy)
-                PROXY_MODE="${2:-}"
-                [ -n "$PROXY_MODE" ] && [ "${PROXY_MODE:0:1}" != "-" ] && shift
-                [ -n "${2:-}" ] && [ "${2:0:1}" = "-" ] && PROXY_MODE=""
-                shift
-                ;;
-            --port)
-                PROXY_PORT="$2"
-                shift 2
-                ;;
             --version|-v)
                 echo "AIDO version 1.0.0"
                 exit 0
                 ;;
+            --config) SHOW_CONFIG=true; shift ;;
             --help|-h) show_help; exit 0 ;;
-            -*) error "Unknown option: $1"; show_help; exit 1 ;;
             *)
-                if [ -n "$1" ] && is_known_command "$1"; then
-                    error "Command '$1' must be specified before the query"
-                    exit 1
-                fi
                 show_unknown_command "$1"
                 ;;
         esac
@@ -1361,12 +1305,6 @@ show_help() {
     echo "  aido connect opencode    Configure OpenCode to use AIDO provider"
     echo "  aido auth [provider]     Open auth page (zen|gemini|openai)"
     echo "  aido key [cmd]           Manage API keys"
-    echo ""
-    echo "Legacy (backward compatible):"
-    echo "  aido proxy start         -> aido serve"
-    echo "  aido --list              -> aido list"
-    echo "  aido models install      -> aido pull"
-    echo "  aido opencode connect    -> aido connect opencode"
     echo ""
     echo "Examples:"
     echo "  aido run 'Hello'             # Query"
@@ -1403,78 +1341,6 @@ main() {
                 ;;
         esac
     done
-    
-    # Check for proxy subcommand
-    if [ "$1" = "proxy" ]; then
-        PROXY_MODE="${2:-start}"
-        PROXY_PORT="${4:-11999}"
-        
-        case "$PROXY_MODE" in
-            start)
-                proxy_start "$PROXY_PORT"
-                exit $?
-                ;;
-            stop)
-                proxy_stop
-                exit $?
-                ;;
-            status)
-                proxy_status
-                exit $?
-                ;;
-            *)
-                echo "Usage: aido proxy [start|stop|status] [--port PORT]"
-                exit 1
-                ;;
-        esac
-    fi
-    
-    # Check for models subcommand
-    if [ "$1" = "models" ]; then
-        local models_action="${2:-list}"
-        
-        case "$models_action" in
-            install)
-                if [ -n "${3:-}" ]; then
-                    install_model "$3"
-                else
-                    install_recommended_models
-                fi
-                exit $?
-                ;;
-            list)
-                list_installable_models
-                exit $?
-                ;;
-            *)
-                echo "Usage: aido models [install|list]"
-                exit 1
-                ;;
-        esac
-    fi
-    
-    # Check for opencode subcommand
-    if [ "$1" = "opencode" ]; then
-        OPENCODE_MODE="${2:-config}"
-        
-        case "$OPENCODE_MODE" in
-            config)
-                generate_opencode_config
-                exit $?
-                ;;
-            connect)
-                opencode_connect
-                exit $?
-                ;;
-            *)
-                echo "Usage: aido opencode [config|connect]"
-                echo ""
-                echo "  config   Generate opencode.jsonc to use aido as provider"
-                echo "  connect  Open OpenCode Zen auth page"
-                exit 1
-                ;;
-        esac
-    fi
     
     # Check for connect subcommand
     if [ "$1" = "connect" ]; then
