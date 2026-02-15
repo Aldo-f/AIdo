@@ -186,27 +186,30 @@ test_unknown_option() {
 }
 
 test_run_single_quote() {
-    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+    curl -s http://localhost:11434 >/dev/null 2>&1 || {
         echo "    ${YELLOW}SKIP: ollama not running${NC}"
         return 0
     }
-    timeout 30 run_aido run 'Hello' 2>/dev/null
+    output=$(run_aido run 'Hello' 2>&1) || return 1
+    [[ "$output" == *"[INFO]"* ]]
 }
 
 test_run_double_quote() {
-    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+    curl -s http://localhost:11434 >/dev/null 2>&1 || {
         echo "    ${YELLOW}SKIP: ollama not running${NC}"
         return 0
     }
-    timeout 30 run_aido run "Hello" 2>/dev/null
+    output=$(run_aido run "Hello" 2>&1) || return 1
+    [[ "$output" == *"[INFO]"* ]]
 }
 
 test_run_no_quote() {
-    timeout 30 curl -s http://localhost:11434 >/dev/null 2>&1 || {
+    curl -s http://localhost:11434 >/dev/null 2>&1 || {
         echo "    ${YELLOW}SKIP: ollama not running${NC}"
         return 0
     }
-    timeout 30 run_aido run Hello 2>/dev/null
+    output=$(run_aido run Hello 2>&1) || return 1
+    [[ "$output" == *"[INFO]"* ]]
 }
 
 test_run_without_run_fails() {

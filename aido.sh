@@ -155,12 +155,16 @@ list_installable_models() {
 # Provider endpoints
 OLLAMA_ENDPOINT="${OLLAMA_ENDPOINT:-http://localhost:11434}"
 DMR_ENDPOINT="${DMR_ENDPOINT:-http://localhost:12434}"
+OPENCODE_ZEN_ENDPOINT="${OPENCODE_ZEN_ENDPOINT:-https://api.opencode.ai}"
+GEMINI_ENDPOINT="${GEMINI_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta}"
 CLOUD_ENDPOINT="${CLOUD_ENDPOINT:-https://api.openai.com}"
 
 # ==================== PROVIDER DETECTION ====================
 
 detect_providers() {
     local providers_json="{}"
+    local config
+    config=$(cat "$DATA_DIR/config.json" 2>/dev/null || echo '{}')
     
     # Detect Ollama
     if curl -f -s --connect-timeout 2 "$OLLAMA_ENDPOINT/api/tags" >/dev/null 2>&1; then
@@ -168,10 +172,10 @@ detect_providers() {
         ollama_models=$(curl -s "$OLLAMA_ENDPOINT/api/tags" | jq '[.models[].name]' 2>/dev/null || echo "[]")
         providers_json=$(echo "$providers_json" | jq \
             --argjson models "$ollama_models" \
-            '. + {"ollama": {"enabled": true, "priority": 1, "endpoint": "'"$OLLAMA_ENDPOINT"'", "models": $models, "status": "running"}}')
+            '. + {"ollama": {"enabled": true, "priority": 1, "endpoint": "'"$OLLAMA_ENDPOINT"'", "models": $models, "status": "running", "keys": []}}')
     else
         providers_json=$(echo "$providers_json" | jq \
-            '. + {"ollama": {"enabled": false, "priority": 1, "endpoint": "'"$OLLAMA_ENDPOINT"'", "models": [], "status": "not running"}}')
+            '. + {"ollama": {"enabled": false, "priority": 1, "endpoint": "'"$OLLAMA_ENDPOINT"'", "models": [], "status": "not running", "keys": []}}')
     fi
     
     # Detect Docker Model Runner
@@ -180,15 +184,53 @@ detect_providers() {
         dmr_models=$(curl -s "$DMR_ENDPOINT/models" 2>/dev/null | jq '[.data[].id]' 2>/dev/null || echo "[]")
         providers_json=$(echo "$providers_json" | jq \
             --argjson models "$dmr_models" \
-            '. + {"docker-model-runner": {"enabled": true, "priority": 2, "endpoint": "'"$DMR_ENDPOINT"'", "models": $models, "status": "running"}}')
+            '. + {"docker-model-runner": {"enabled": true, "priority": 2, "endpoint": "'"$DMR_ENDPOINT"'", "models": $models, "status": "running", "keys": []}}')
     else
         providers_json=$(echo "$providers_json" | jq \
-            '. + {"docker-model-runner": {"enabled": false, "priority": 2, "endpoint": "'"$DMR_ENDPOINT"'", "models": [], "status": "not running"}}')
+            '. + {"docker-model-runner": {"enabled": false, "priority": 2, "endpoint": "'"$DMR_ENDPOINT"'", "models": [], "status": "not running", "keys": []}}')
     fi
     
-    # Cloud is always available (if configured)
+    # Detect OpenCode Zen (cloud provider with keys)
+    local zen_enabled
+    zen_enabled=$(echo "$config" | jq -r '.providers."opencode-zen".enabled // true')
+    local zen_keys
+    zen_keys=$(echo "$config" | jq -r '.providers."opencode-zen".keys // []')
+    local zen_key_count
+    zen_key_count=$(echo "$zen_keys" | jq 'length')
+    
+    if [ "$zen_enabled" = "true" ] && [ "$zen_key_count" -gt 0 ]; then
+        local zen_models='["gpt-4o", "o1", "o1-mini", "o3-mini"]'
+        providers_json=$(echo "$providers_json" | jq \
+            --argjson models "$zen_models" \
+            --argjson keys "$zen_keys" \
+            '. + {"opencode-zen": {"enabled": true, "priority": 1, "endpoint": "'"$OPENCODE_ZEN_ENDPOINT"'", "models": $models, "status": "running", "keys": $keys}}')
+    else
+        providers_json=$(echo "$providers_json" | jq \
+            '. + {"opencode-zen": {"enabled": false, "priority": 1, "endpoint": "'"$OPENCODE_ZEN_ENDPOINT"'", "models": [], "status": "no keys", "keys": []}}')
+    fi
+    
+    # Detect Gemini (cloud provider with keys)
+    local gemini_enabled
+    gemini_enabled=$(echo "$config" | jq -r '.providers.gemini.enabled // true')
+    local gemini_keys
+    gemini_keys=$(echo "$config" | jq -r '.providers.gemini.keys // []')
+    local gemini_key_count
+    gemini_key_count=$(echo "$gemini_keys" | jq 'length')
+    
+    if [ "$gemini_enabled" = "true" ] && [ "$gemini_key_count" -gt 0 ]; then
+        local gemini_models='["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]'
+        providers_json=$(echo "$providers_json" | jq \
+            --argjson models "$gemini_models" \
+            --argjson keys "$gemini_keys" \
+            '. + {"gemini": {"enabled": true, "priority": 1, "endpoint": "'"$GEMINI_ENDPOINT"'", "models": $models, "status": "running", "keys": $keys}}')
+    else
+        providers_json=$(echo "$providers_json" | jq \
+            '. + {"gemini": {"enabled": false, "priority": 1, "endpoint": "'"$GEMINI_ENDPOINT"'", "models": [], "status": "no keys", "keys": []}}')
+    fi
+    
+    # Cloud (OpenAI) - disabled by default
     providers_json=$(echo "$providers_json" | jq \
-        '. + {"cloud": {"enabled": false, "priority": 3, "endpoint": "'"$CLOUD_ENDPOINT"'", "models": [], "status": "disabled"}}')
+        '. + {"cloud": {"enabled": false, "priority": 3, "endpoint": "'"$CLOUD_ENDPOINT"'", "models": [], "status": "disabled", "keys": []}}')
     
     echo "$providers_json"
 }
@@ -229,7 +271,7 @@ init_data_dir() {
       "keys": []
     }
   },
-  "selection": {"default_mode": "auto"},
+  "selection": {"default_mode": "cloud_first"},
   "ui": {"debug_mode": false}
 }
 EOFCONFIG
@@ -636,6 +678,25 @@ test_provider_key() {
     esac
 }
 
+get_first_provider_key() {
+    local provider="$1"
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local keys
+    keys=$(echo "$config" | jq -r ".providers.\"$provider\".keys // []")
+    
+    local first_key
+    first_key=$(echo "$keys" | jq -r '.[0].key' 2>/dev/null)
+    
+    if [ -z "$first_key" ] || [ "$first_key" = "null" ]; then
+        echo ""
+        return 1
+    fi
+    
+    echo "$first_key"
+}
+
 run_init() {
     echo -e "${CYAN}AIDO Init${NC}"
     echo "========="
@@ -906,6 +967,30 @@ get_all_available_models() {
         fi
     fi
     
+    # OpenCode Zen models (cloud - has keys)
+    local zen_status
+    zen_status=$(echo "$providers" | jq -r '.["opencode-zen"].status')
+    if [ "$zen_status" = "running" ]; then
+        local zen_models
+        zen_models=$(echo "$providers" | jq '.["opencode-zen"].models')
+        if [ "$zen_models" != "null" ] && [ -n "$zen_models" ]; then
+            all_models=$(jq -n --argjson current "$all_models" --argjson new "$zen_models" \
+                '$current + ($new | map({"name": ., "provider": "opencode-zen"}))' 2>/dev/null || echo "$all_models")
+        fi
+    fi
+    
+    # Gemini models (cloud - has keys)
+    local gemini_status
+    gemini_status=$(echo "$providers" | jq -r '.gemini.status')
+    if [ "$gemini_status" = "running" ]; then
+        local gemini_models
+        gemini_models=$(echo "$providers" | jq '.gemini.models')
+        if [ "$gemini_models" != "null" ] && [ -n "$gemini_models" ]; then
+            all_models=$(jq -n --argjson current "$all_models" --argjson new "$gemini_models" \
+                '$current + ($new | map({"name": ., "provider": "gemini"}))' 2>/dev/null || echo "$all_models")
+        fi
+    fi
+    
     echo "$all_models"
 }
 
@@ -937,13 +1022,62 @@ select_model_auto() {
         return 1
     fi
     
-    # Pick first available model (sorted by provider priority)
-    local selected
-    selected=$(echo "$all_models" | jq -r '.[0].name')
-    local selected_provider
-    selected_provider=$(echo "$all_models" | jq -r '.[0].provider')
+    # Get preference from config
+    local preference
+    preference=$(echo "$CONFIG_JSON" | jq -r '.selection.default_mode // "cloud_first"')
+    log "Model preference: $preference"
     
-    log "Selected: $selected (provider: $selected_provider)"
+    # Separate cloud and local models
+    local cloud_models
+    local local_models
+    
+    cloud_models=$(echo "$all_models" | jq '[.[] | select(.provider == "opencode-zen" or .provider == "gemini" or .provider == "cloud")]')
+    local_models=$(echo "$all_models" | jq '[.[] | select(.provider == "ollama" or .provider == "docker-model-runner")]')
+    
+    # Select based on preference
+    local selected
+    local selected_provider
+    
+    if [ "$preference" = "cloud_first" ]; then
+        if [ "$(echo "$cloud_models" | jq 'length')" -gt 0 ]; then
+            selected=$(echo "$cloud_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$cloud_models" | jq -r '.[0].provider')
+            log "Selected (cloud): $selected (provider: $selected_provider)"
+        elif [ "$(echo "$local_models" | jq 'length')" -gt 0 ]; then
+            selected=$(echo "$local_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$local_models" | jq -r '.[0].provider')
+            log "Selected (local fallback): $selected (provider: $selected_provider)"
+        else
+            selected=$(echo "$all_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$all_models" | jq -r '.[0].provider')
+            log "Selected: $selected (provider: $selected_provider)"
+        fi
+    elif [ "$preference" = "local_first" ]; then
+        if [ "$(echo "$local_models" | jq 'length')" -gt 0 ]; then
+            selected=$(echo "$local_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$local_models" | jq -r '.[0].provider')
+            log "Selected (local): $selected (provider: $selected_provider)"
+        elif [ "$(echo "$cloud_models" | jq 'length')" -gt 0 ]; then
+            selected=$(echo "$cloud_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$cloud_models" | jq -r '.[0].provider')
+            log "Selected (cloud fallback): $selected (provider: $selected_provider)"
+        else
+            selected=$(echo "$all_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$all_models" | jq -r '.[0].provider')
+            log "Selected: $selected (provider: $selected_provider)"
+        fi
+    else
+        # "auto" - use cloud if available, else local
+        if [ "$(echo "$cloud_models" | jq 'length')" -gt 0 ]; then
+            selected=$(echo "$cloud_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$cloud_models" | jq -r '.[0].provider')
+            log "Selected (auto - cloud): $selected (provider: $selected_provider)"
+        else
+            selected=$(echo "$local_models" | jq -r '.[0].name')
+            selected_provider=$(echo "$local_models" | jq -r '.[0].provider')
+            log "Selected (auto - local): $selected (provider: $selected_provider)"
+        fi
+    fi
     
     echo "$selected"
 }
@@ -1085,16 +1219,16 @@ execute_query() {
         return 1
     fi
     
+    # Always get provider from model (model selection already respects preference)
     local provider
-    if [ "$PROVIDER_MODE" = "auto" ]; then
-        provider=$(get_provider_for_model "$model")
-    else
-        provider="$PROVIDER_MODE"
-    fi
+    provider=$(get_provider_for_model "$model")
     
     local endpoint
     case "$provider" in
         docker-model-runner) endpoint="$DMR_ENDPOINT" ;;
+        opencode-zen) endpoint="$OPENCODE_ZEN_ENDPOINT" ;;
+        gemini) endpoint="$GEMINI_ENDPOINT" ;;
+        cloud) endpoint="$CLOUD_ENDPOINT" ;;
         *) endpoint="$OLLAMA_ENDPOINT" ;;
     esac
     
@@ -1104,18 +1238,50 @@ execute_query() {
     info "Using: $model (provider: $provider)"
     
     local response
-    if [ "$provider" = "docker-model-runner" ]; then
-        # DMR uses OpenAI-compatible API
-        response=$(curl -s -X POST "$endpoint/chat/completions" \
-            -H "Content-Type: application/json" \
-            -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
-            jq -r '.choices[0].message.content' 2>/dev/null) || true
-    else
-        # Ollama API
-        response=$(curl -s -X POST "$endpoint/api/generate" \
-            -d "{\"model\": \"$model\", \"prompt\": \"$query\", \"stream\": false}" | \
-            jq -r '.response' 2>/dev/null) || true
-    fi
+    local api_key
+    
+    case "$provider" in
+        docker-model-runner)
+            # DMR uses OpenAI-compatible API
+            response=$(curl -s -X POST "$endpoint/chat/completions" \
+                -H "Content-Type: application/json" \
+                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
+                jq -r '.choices[0].message.content' 2>/dev/null) || true
+            ;;
+        opencode-zen)
+            # OpenCode Zen API
+            api_key=$(get_first_provider_key "opencode-zen")
+            response=$(curl -s -X POST "$endpoint/v1/chat/completions" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer $api_key" \
+                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
+                jq -r '.choices[0].message.content' 2>/dev/null) || true
+            ;;
+        gemini)
+            # Gemini API
+            api_key=$(get_first_provider_key "gemini")
+            response=$(curl -s -X POST "$endpoint/models/$model:generateContent" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer $api_key" \
+                -d "{\"contents\": [{\"parts\": [{\"text\": \"$query\"}]}]}" | \
+                jq -r '.candidates[0].content.parts[0].text' 2>/dev/null) || true
+            ;;
+        cloud)
+            # OpenAI API
+            api_key=$(get_first_provider_key "cloud")
+            response=$(curl -s -X POST "$endpoint/v1/chat/completions" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer $api_key" \
+                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
+                jq -r '.choices[0].message.content' 2>/dev/null) || true
+            ;;
+        *)
+            # Ollama API
+            response=$(curl -s -X POST "$endpoint/api/generate" \
+                -d "{\"model\": \"$model\", \"prompt\": \"$query\", \"stream\": false}" | \
+                jq -r '.response' 2>/dev/null) || true
+            ;;
+    esac
     
     local end_time end_time_sec
     end_time=$(date +%s%N)

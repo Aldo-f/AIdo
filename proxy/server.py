@@ -197,7 +197,10 @@ def load_config():
 def get_model_preference():
     """Get model preference from config"""
     config = load_config()
-    return config.get("model_preference", "cloud_first")
+    # Support both "model_preference" and "selection.default_mode" keys
+    return config.get("model_preference") or config.get("selection", {}).get(
+        "default_mode", "cloud_first"
+    )
 
 
 def get_api_mode():
@@ -472,6 +475,19 @@ def classify_query(prompt):
     }
 
 
+def find_model_provider(model_name):
+    """Find provider and endpoint for a specific model"""
+    available = detect_providers()
+
+    for name, info in available.items():
+        if info.get("status") != "running" or not info.get("models"):
+            continue
+        if model_name in info["models"]:
+            return model_name, name, info["endpoint"]
+
+    return None, None, None
+
+
 def select_model(prompt, provider_hint=None):
     """Select best model for the given prompt"""
     log(f"Selecting model for prompt (length: {len(prompt)} chars)")
@@ -493,56 +509,43 @@ def select_model(prompt, provider_hint=None):
         except:
             return None, None, None
 
-    cloud_suffixes = ["-cloud", ":cloud"]
+    # Determine cloud vs local providers based on API keys
+    # Cloud providers: have keys (opencode-zen, gemini, cloud)
+    # Local providers: no keys (ollama, docker-model-runner)
+    cloud_providers = []
+    local_providers = []
 
     for name, info in available.items():
-        if info.get("status") == "running" and info.get("models"):
-            models = info["models"]
+        if info.get("status") != "running" or not info.get("models"):
+            continue
+        if info.get("keys"):  # Has API keys = cloud provider
+            cloud_providers.append((name, info))
+        else:  # No keys = local provider
+            local_providers.append((name, info))
 
-            # Filter out failed models
-            models = [m for m in models if m not in failed_model_names]
+    log(f"Cloud providers: {[p[0] for p in cloud_providers]}")
+    log(f"Local providers: {[p[0] for p in local_providers]}")
 
-            if preference == "local_first":
-                # Filter: prefer local models first
-                local_models = [
-                    m for m in models if not any(s in m for s in cloud_suffixes)
-                ]
-                if local_models:
-                    model = local_models[0]
-                    log(f"Selected model: {model} (local) from provider: {name}")
-                    return model, name, info["endpoint"]
-                # Fallback to cloud if no local
-                if models:
-                    model = models[0]
-                    log(
-                        f"Selected model: {model} (cloud fallback) from provider: {name}"
-                    )
-                    return model, name, info["endpoint"]
+    # Select based on preference
+    if preference == "cloud_first":
+        # Try cloud first, then local fallback
+        providers_to_try = cloud_providers + local_providers
+    elif preference == "local_first":
+        # Try local first, then cloud fallback
+        providers_to_try = local_providers + cloud_providers
+    else:  # "auto" - smart pick: use cloud if available, else local
+        providers_to_try = cloud_providers if cloud_providers else local_providers
 
-            elif preference == "cloud_first":
-                # Filter: prefer cloud models first
-                cloud_models = [
-                    m for m in models if any(s in m for s in cloud_suffixes)
-                ]
-                if cloud_models:
-                    model = cloud_models[0]
-                    log(f"Selected model: {model} (cloud) from provider: {name}")
-                    return model, name, info["endpoint"]
-                # Fallback to local if no cloud
-                local_models = [
-                    m for m in models if not any(s in m for s in cloud_suffixes)
-                ]
-                if local_models:
-                    model = local_models[0]
-                    log(
-                        f"Selected model: {model} (local fallback) from provider: {name}"
-                    )
-                    return model, name, info["endpoint"]
-
-            else:  # "auto" - use first available
-                model = models[0]
-                log(f"Selected model: {model} (auto) from provider: {name}")
-                return model, name, info["endpoint"]
+    # Find first available model from providers
+    for name, info in providers_to_try:
+        models = info["models"]
+        # Filter out failed models
+        models = [m for m in models if m not in failed_model_names]
+        if models:
+            model = models[0]
+            model_type = "cloud" if name in [p[0] for p in cloud_providers] else "local"
+            log(f"Selected model: {model} ({model_type}) from provider: {name}")
+            return model, name, info["endpoint"]
 
     log("No models available from any provider", "ERROR")
     return None, None, None
@@ -734,6 +737,9 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
             self.send_json({"error": "Invalid JSON"}, 400)
             return
 
+        # Get requested model (if any)
+        requested_model = request_data.get("model")
+
         # Get prompt from messages
         messages = request_data.get("messages", [])
         if not messages:
@@ -759,8 +765,19 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
         provider = None
         endpoint = None
         while True:
-            # Select best model (only on first iteration)
-            if not fallback_attempted:
+            # Use requested model if provided, otherwise select best model
+            if requested_model and not fallback_attempted:
+                # Find provider for requested model
+                model, provider, endpoint = find_model_provider(requested_model)
+                if not model:
+                    # Model not found, fall back to auto-selection
+                    log(
+                        f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
+                    )
+                    model, provider, endpoint = select_model(user_message)
+                    requested_model = None  # Prevent further use
+            elif not fallback_attempted:
+                # No requested model, auto-select
                 model, provider, endpoint = select_model(user_message)
             else:
                 log(f"[{request_id}] Trying fallback model...")
