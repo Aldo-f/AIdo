@@ -160,6 +160,30 @@ test_key_add_alias() {
     assert_contains "$output" "lias"
 }
 
+test_key_add_multiple() {
+    run_aido key add opencode-zen key-1 "first" >/dev/null 2>&1
+    run_aido key add opencode-zen key-2 "second" >/dev/null 2>&1
+    output=$(run_aido key list 2>&1)
+    assert_contains "$output" "first"
+    assert_contains "$output" "second"
+}
+
+test_selection_cloud_first() {
+    output=$(run_aido --config 2>&1)
+    echo "$output" | jq '.selection.default_mode = "cloud_first"' > /tmp/test_config.json
+    mv /tmp/test_config.json "$TEST_DATA_DIR/.aido-data/config.json"
+    output=$(run_aido --config 2>&1)
+    assert_contains "$output" "cloud_first"
+}
+
+test_selection_local_first() {
+    output=$(run_aido --config 2>&1)
+    echo "$output" | jq '.selection.default_mode = "local_first"' > /tmp/test_config.json
+    mv /tmp/test_config.json "$TEST_DATA_DIR/.aido-data/config.json"
+    output=$(run_aido --config 2>&1)
+    assert_contains "$output" "local_first"
+}
+
 test_provider_auto() {
     output=$(timeout 5 run_aido --debug --auto "test" 2>&1 || true)
     # Should show auto mode
@@ -283,6 +307,11 @@ main() {
     run_test test_key_list
     run_test test_key_add
     run_test test_key_add_alias
+    run_test test_key_add_multiple
+    
+    echo -e "${BLUE}Selection Modes:${NC}"
+    run_test test_selection_cloud_first
+    run_test test_selection_local_first
     
     echo -e "${BLUE}Providers:${NC}"
     run_test test_provider_auto

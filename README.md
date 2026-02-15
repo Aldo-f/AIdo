@@ -74,6 +74,57 @@ AIDO supports multiple providers:
 | gemini | Google Gemini | Yes |
 | cloud | OpenAI | Yes |
 
+### Multi-Key Support
+
+You can add multiple API keys per provider. AIDO automatically handles:
+- **Rate limits (HTTP 429)**: Tries next key
+- **Auth errors (HTTP 401/403)**: Tries next key
+
+```bash
+# Add multiple keys
+./aido key add opencode-zen sk-zen-xxx-1 "primary"
+./aido key add opencode-zen sk-zen-xxx-2 "backup"
+
+# List keys
+./aido key list
+
+# Delete a key by index
+./aido key delete opencode-zen 1
+
+# Delete all keys
+./aido key delete-all opencode-zen
+
+# Test all keys
+./aido key test opencode-zen
+```
+
+### Model Selection
+
+AIDO supports three selection modes controlled by `selection.default_mode` in config:
+
+| Mode | Behavior |
+|------|----------|
+| `cloud_first` | Prefer cloud providers (Zen, Gemini, OpenAI) first, fall back to local |
+| `local_first` | Prefer local providers (Ollama, DMR) first, fall back to cloud |
+| `auto` | Use cloud if keys available, otherwise local (default) |
+
+```bash
+# View current config
+./aido --config | jq '.selection'
+
+# Change to cloud_first
+./aido --config | jq '.selection = {"default_mode": "cloud_first"}' > /tmp/c.json
+mv /tmp/c.json ~/.aido-data/config.json
+
+# Change to local_first
+./aido --config | jq '.selection = {"default_mode": "local_first"}' > /tmp/c.json
+mv /tmp/c.json ~/.aido-data/config.json
+```
+
+**Selection Priority:**
+- `cloud_first`: OpenCode Zen → Gemini → OpenAI → Ollama → DMR
+- `local_first`: Ollama → DMR → OpenCode Zen → Gemini → OpenAI |
+
 ## Architecture
 
 ```

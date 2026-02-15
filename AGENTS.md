@@ -298,7 +298,7 @@ aido/
 Config stored in: `~/.aido-data/config.json`
 
 Key settings:
-- `model_preference`: "cloud_first", "local_first", or "auto"
+- `selection.default_mode`: "cloud_first", "local_first", or "auto" (default: cloud_first)
 - `api_mode`: "chat" or "generate" (default: generate)
 
 ### Provider Configuration
@@ -327,11 +327,23 @@ Key settings:
         {"key": "gemini-api-key"}
       ]
     }
+  },
+  "selection": {
+    "default_mode": "cloud_first"
   }
 }
 ```
 
-Multi-key support:
+### Selection Modes
+
+| Mode | Behavior |
+|------|----------|
+| `cloud_first` | Prefer cloud providers (Zen, Gemini, OpenAI), fallback to local |
+| `local_first` | Prefer local providers (Ollama, DMR), fallback to cloud |
+| `auto` | Use cloud if keys available, otherwise local |
+
+### Multi-Key Support
+
 - Keys are tried sequentially
 - On HTTP 429 (rate limit) or 401/403 (auth error), the key is skipped and the next key is tried
 - Optional `name` field for key identification
