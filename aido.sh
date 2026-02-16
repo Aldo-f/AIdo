@@ -680,11 +680,30 @@ test_provider_key() {
     local key="$2"
     local result
     
+    # Get endpoint from config or use default
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    local endpoint
+    case "$provider" in
+        opencode-zen)
+            endpoint=$(echo "$config" | jq -r '.providers."opencode-zen".endpoint // "'"$OPENCODE_ZEN_ENDPOINT"'"')
+            ;;
+        gemini)
+            endpoint=$(echo "$config" | jq -r '.providers.gemini.endpoint // "'"$GEMINI_ENDPOINT"'"')
+            ;;
+        cloud)
+            endpoint=$(echo "$config" | jq -r '.providers.cloud.endpoint // "'"$CLOUD_ENDPOINT"'"')
+            ;;
+        *)
+            endpoint=""
+            ;;
+    esac
+    
     case "$provider" in
         opencode-zen)
             result=$(curl -s -w "\n%{http_code}" -o /tmp/key_test_$$ \
                 -H "Authorization: Bearer $key" \
-                "$OPENCODE_ZEN_ENDPOINT/v1/models" 2>/dev/null)
+                "$endpoint/v1/models" 2>/dev/null)
             # Check for error codes in response
             if echo "$result" | grep -q "401\|403"; then
                 echo "Auth failed (401/403) - check key"
@@ -756,6 +775,20 @@ get_first_provider_key() {
     echo "$first_key"
 }
 
+validate_endpoint() {
+    local provider="$1"
+    local endpoint="$2"
+    local key="$3"
+    
+    # Quick check for known bad endpoints
+    if [ "$provider" = "opencode-zen" ] && [[ "$endpoint" == *"api.opencode.ai"* ]]; then
+        echo "invalid_endpoint:old"
+        return 1
+    fi
+    
+    return 0
+}
+
 refresh_key_models() {
     local provider="$1"
     local config
@@ -789,6 +822,18 @@ refresh_key_models() {
     esac
     
     echo -e "${CYAN}Refreshing models for $provider...${NC}"
+    
+    # Validate endpoint before proceeding
+    local first_key
+    first_key=$(echo "$keys" | jq -r '.[0].key')
+    local endpoint_validation
+    endpoint_validation=$(validate_endpoint "$provider" "$endpoint" "$first_key" 2>/dev/null)
+    
+    if [ $? -ne 0 ] && [ -n "$endpoint_validation" ]; then
+        echo -e "${RED}Endpoint error: $endpoint_validation${NC}"
+        echo -e "${YELLOW}To fix: jq '.providers.\"$provider\".endpoint = \"https://opencode.ai/zen\"' ~/.aido-data/config.json > /tmp/c.json && mv /tmp/c.json ~/.aido-data/config.json${NC}"
+        return 1
+    fi
     
     local idx=0
     for key_entry in $(echo "$keys" | jq -r '.[] | @base64'); do
@@ -911,13 +956,21 @@ run_init() {
                     # Test the first key
                     local first_key
                     first_key=$(echo "$keys" | jq -r '.[0].key')
-                    local test_result
-                    test_result=$(test_provider_key "$prov" "$first_key" 2>/dev/null)
                     
-                    if [ "$test_result" = "ok" ]; then
-                        echo -e "${GREEN}Ready ($key_count key(s))${NC}"
+                    # First validate endpoint - simple check for old endpoint
+                    if [ "$prov" = "opencode-zen" ] && [[ "$endpoint" == *"api.opencode.ai"* ]]; then
+                        echo -e "${RED}Endpoint error: The endpoint '$endpoint' is outdated. Use 'https://opencode.ai/zen' instead.${NC}"
+                        echo -e "${YELLOW}To fix: jq '.providers.\"$prov\".endpoint = \"https://opencode.ai/zen\"' ~/.aido-data/config.json > /tmp/c.json && mv /tmp/c.json ~/.aido-data/config.json${NC}"
                     else
-                        echo -e "${YELLOW}Key issue: $test_result${NC}"
+                        # Then test the key
+                        local test_result
+                        test_result=$(test_provider_key "$prov" "$first_key" 2>/dev/null)
+                        
+                        if [ "$test_result" = "ok" ]; then
+                            echo -e "${GREEN}Ready ($key_count key(s))${NC}"
+                        else
+                            echo -e "${YELLOW}Key issue: $test_result${NC}"
+                        fi
                     fi
                 else
                     echo -e "${YELLOW}No keys - run 'aido auth $prov'${NC}"
