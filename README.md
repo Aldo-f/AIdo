@@ -191,3 +191,4 @@ aido status
 ```
 
 This installs `aido` to `/usr/local/bin/aido`.
+# Test
