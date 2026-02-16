@@ -6,6 +6,41 @@ AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Doc
 
 ---
 
+## Development Setup
+
+### Pre-Commit Hook
+
+AIDO uses a pre-commit hook that automatically runs all tests before allowing a commit:
+
+```bash
+# The hook is located at:
+.git/hooks/pre-commit
+
+# Tests run automatically when you commit:
+git commit -m "your message"
+
+# If tests fail, the commit is aborted
+```
+
+To manually install the hook:
+```bash
+cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/bash
+echo "Running tests before commit..."
+cd /media/aldo/shared/aido
+if ! timeout 120 make test > /tmp/pre-commit-test.log 2>&1; then
+    echo "❌ TESTS FAILED - Commit aborted"
+    tail -50 /tmp/pre-commit-test.log
+    exit 1
+fi
+echo "✅ All tests passed!"
+exit 0
+EOF
+chmod +x .git/hooks/pre-commit
+```
+
+---
+
 ## Commands
 
 ### Running Tests
