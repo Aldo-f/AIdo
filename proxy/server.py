@@ -732,6 +732,90 @@ def forward_request(
         return json.dumps({"error": str(e)}), 500
 
 
+def forward_streaming_request(endpoint, path, data, api_key=None, provider_name=None):
+    """Forward streaming request to provider and yield chunks
+
+    Yields:
+        bytes: Raw response chunks
+    """
+    url = f"{endpoint}{path}"
+
+    request_id = str(uuid.uuid4())[:8]
+    log(f"[{request_id}] Forwarding streaming request to {url}")
+
+    headers = {"Content-Type": "application/json"}
+
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    req = urllib.request.Request(
+        url, data=data.encode() if data else None, headers=headers, method="POST"
+    )
+
+    try:
+        # Use appropriate timeout - 60s for local providers, 30s for cloud
+        is_local = "localhost" in endpoint or "127.0.0.1" in endpoint
+        timeout = 60 if is_local else 30
+
+        response = urllib.request.urlopen(req, timeout=timeout)
+
+        # Stream chunks
+        while True:
+            chunk = response.read(1024)
+            if not chunk:
+                break
+            yield chunk
+
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else ""
+        log(
+            f"[{request_id}] HTTP Error {e.code}: {e.reason}",
+            "ERROR",
+        )
+        if provider_name and e.code in (401, 403, 429):
+            mark_key_failed(provider_name, e.code)
+        yield json.dumps(
+            {"error": f"HTTP {e.code}: {e.reason}", "detail": error_body[:500]}
+        ).encode()
+    except Exception as e:
+        log(
+            f"[{request_id}] Request failed: {type(e).__name__}: {str(e)[:200]}",
+            "ERROR",
+        )
+        yield json.dumps({"error": str(e)}).encode()
+
+
+def convert_ollama_chunk_to_openai(ollama_chunk, model, chunk_id):
+    """Convert Ollama NDJSON chunk to OpenAI SSE format
+
+    Args:
+        ollama_chunk: dict from Ollama
+        model: model name
+        chunk_id: unique chunk id
+
+    Returns:
+        str: SSE formatted chunk
+    """
+    content = ollama_chunk.get("response", "")
+    done = ollama_chunk.get("done", False)
+
+    openai_chunk = {
+        "id": f"chatcmpl-{chunk_id}",
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": content} if content else {},
+                "finish_reason": "stop" if done else None,
+            }
+        ],
+    }
+
+    return f"data: {json.dumps(openai_chunk)}\n\n"
+
+
 class AIDOProxyHandler(BaseHTTPRequestHandler):
     """HTTP handler for AIDO Proxy"""
 
@@ -967,45 +1051,74 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
 
                 log(f"[{request_id}] Using {provider} key: {key_name or 'default'}")
 
-                # Forward to cloud provider
-                result, status_code = forward_request(
-                    endpoint,
-                    "/v1/chat/completions",
-                    body,
-                    api_key=api_key,
-                    provider_name=provider,
-                )
+                # Check if streaming is requested
+                is_streaming = request_data.get("stream", False)
 
-                # Check for error (rate limit, auth error)
-                try:
-                    result_check = json.loads(result)
-                    if "error" in result_check:
-                        error_code = result_check.get("error", {}).get("code")
-                        if status_code in (401, 403, 429) or error_code in (
-                            "rate_limit",
-                            "invalid_api_key",
-                        ):
-                            log(
-                                f"[{request_id}] {provider} error: {result_check.get('error')}, trying next key",
-                                "WARN",
+                if is_streaming:
+                    # Streaming mode - forward SSE chunks
+                    log(f"[{request_id}] Streaming mode enabled")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.send_header("Connection", "keep-alive")
+                    self.end_headers()
+
+                    chunk_id = os.urandom(4).hex()
+                    for chunk in forward_streaming_request(
+                        endpoint,
+                        "/v1/chat/completions",
+                        body,
+                        api_key=api_key,
+                        provider_name=provider,
+                    ):
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+
+                    # Send [DONE] marker
+                    self.wfile.write(b"data: [DONE]\n\n")
+                    self.wfile.flush()
+                    log(f"[{request_id}] Streaming response completed")
+                    return
+                else:
+                    # Non-streaming mode
+                    result, status_code = forward_request(
+                        endpoint,
+                        "/v1/chat/completions",
+                        body,
+                        api_key=api_key,
+                        provider_name=provider,
+                    )
+
+                    # Check for error (rate limit, auth error)
+                    try:
+                        result_check = json.loads(result)
+                        if "error" in result_check:
+                            error_code = result_check.get("error", {}).get("code")
+                            if status_code in (401, 403, 429) or error_code in (
+                                "rate_limit",
+                                "invalid_api_key",
+                            ):
+                                log(
+                                    f"[{request_id}] {provider} error: {result_check.get('error')}, trying next key",
+                                    "WARN",
+                                )
+                                if not fallback_attempted:
+                                    fallback_attempted = True
+                                    continue
+                            self.send_json(
+                                result_check, status_code if status_code else 500
                             )
-                            if not fallback_attempted:
-                                fallback_attempted = True
-                                continue
-                        self.send_json(
-                            result_check, status_code if status_code else 500
-                        )
-                        return
-                except:
-                    pass
+                            return
+                    except:
+                        pass
 
-                # Send successful response
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(result.encode())
-                log(f"[{request_id}] Response sent to client")
-                return
+                    # Send successful response
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(result.encode())
+                    log(f"[{request_id}] Response sent to client")
+                    return
 
             # Local Ollama provider
             elif provider == "ollama":
@@ -1013,101 +1126,164 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                 log(f"[{request_id}] API mode: {api_mode}")
 
                 if api_mode == "generate":
-                    # Use /api/generate for more detailed responses
-                    ollama_data = {
-                        "model": model,
-                        "prompt": prompt,
-                        "stream": request_data.get("stream", False),
-                    }
-                    result, status_code = forward_request(
-                        endpoint,
-                        "/api/generate",
-                        json.dumps(ollama_data),
-                        provider_name="ollama",
-                    )
+                    # Check if streaming is requested
+                    is_streaming = request_data.get("stream", False)
 
-                    # Check for error in response
-                    try:
-                        result_check = json.loads(result)
-                        if "error" in result_check:
-                            log(
-                                f"[{request_id}] Model error: {result_check.get('error')}",
-                                "ERROR",
-                            )
-                            if not fallback_attempted:
-                                fallback_attempted = True
-                                continue
-                            self.send_json({"error": result_check.get("error")}, 500)
-                            return
-                    except:
-                        pass
+                    if is_streaming:
+                        # Streaming mode for Ollama
+                        log(f"[{request_id}] Streaming mode enabled for Ollama")
+                        ollama_data = {
+                            "model": model,
+                            "prompt": prompt,
+                            "stream": True,
+                        }
 
-                    # Convert generate response to OpenAI format
-                    ollama_result = None
-                    try:
-                        # Handle NDJSON (newline-delimited JSON) - Ollama may return multiple lines
-                        lines = result.strip().split("\n")
-                        if len(lines) > 1:
-                            # Multiple lines - parse the last complete response
-                            for line in reversed(lines):
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "keep-alive")
+                        self.end_headers()
+
+                        chunk_id = os.urandom(4).hex()
+                        buffer = b""
+
+                        for chunk in forward_streaming_request(
+                            endpoint,
+                            "/api/generate",
+                            json.dumps(ollama_data),
+                            provider_name="ollama",
+                        ):
+                            buffer += chunk
+                            # Process complete lines
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
                                 line = line.strip()
                                 if line:
                                     try:
-                                        ollama_result = json.loads(line)
-                                        if ollama_result.get("done", False):
+                                        ollama_chunk = json.loads(line.decode())
+                                        # Convert to OpenAI SSE format
+                                        sse_chunk = convert_ollama_chunk_to_openai(
+                                            ollama_chunk, model, chunk_id
+                                        )
+                                        self.wfile.write(sse_chunk.encode())
+                                        self.wfile.flush()
+
+                                        # Check if done
+                                        if ollama_chunk.get("done", False):
                                             break
-                                    except:
+                                    except json.JSONDecodeError:
+                                        log(
+                                            f"[{request_id}] Failed to parse chunk: {line}"
+                                        )
                                         continue
-                        else:
-                            ollama_result = json.loads(result)
-                        response_content = (
-                            ollama_result.get("response", "") if ollama_result else ""
-                        )
-                        response = {
-                            "id": "chatcmpl-" + os.urandom(8).hex(),
-                            "object": "chat.completion",
-                            "created": 0,
+
+                        # Send [DONE] marker
+                        self.wfile.write(b"data: [DONE]\n\n")
+                        self.wfile.flush()
+                        log(f"[{request_id}] Streaming response completed")
+                        return
+                    else:
+                        # Non-streaming mode - use /api/generate for more detailed responses
+                        ollama_data = {
                             "model": model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": response_content,
-                                    },
-                                    "finish_reason": "stop",
-                                }
-                            ],
+                            "prompt": prompt,
+                            "stream": False,
                         }
-                        log(f"[{request_id}] Response: {response_content[:100]}...")
-
-                        duration_ms = int(
-                            (
-                                datetime.datetime.now() - request_start_time
-                            ).total_seconds()
-                            * 1000
-                        )
-                        database.log_query(
-                            query_text=user_message[:500],
-                            query_summary=database.summarize_query(user_message),
-                            model_used=model,
-                            provider=str(provider or "unknown"),
-                            api_mode=api_mode,
-                            response_time_ms=duration_ms,
-                            response_length=len(response_content),
-                            success=True,
+                        result, status_code = forward_request(
+                            endpoint,
+                            "/api/generate",
+                            json.dumps(ollama_data),
+                            provider_name="ollama",
                         )
 
-                        self.send_json(response)
-                        return
-                    except Exception as e:
-                        log(f"[{request_id}] Error parsing response: {e}", "ERROR")
-                        log(f"[{request_id}] Raw response: {result[:500]}", "ERROR")
-                        if not fallback_attempted:
-                            fallback_attempted = True
-                            continue
-                        self.send_json({"error": str(e), "detail": result[:500]}, 500)
-                        return
+                        # Check for error in response
+                        try:
+                            result_check = json.loads(result)
+                            if "error" in result_check:
+                                log(
+                                    f"[{request_id}] Model error: {result_check.get('error')}",
+                                    "ERROR",
+                                )
+                                if not fallback_attempted:
+                                    fallback_attempted = True
+                                    continue
+                                self.send_json(
+                                    {"error": result_check.get("error")}, 500
+                                )
+                                return
+                        except:
+                            pass
+
+                        # Convert generate response to OpenAI format
+                        ollama_result = None
+                        try:
+                            # Handle NDJSON (newline-delimited JSON) - Ollama may return multiple lines
+                            lines = result.strip().split("\n")
+                            if len(lines) > 1:
+                                # Multiple lines - parse the last complete response
+                                for line in reversed(lines):
+                                    line = line.strip()
+                                    if line:
+                                        try:
+                                            ollama_result = json.loads(line)
+                                            if ollama_result.get("done", False):
+                                                break
+                                        except:
+                                            continue
+                            else:
+                                ollama_result = json.loads(result)
+                            response_content = (
+                                ollama_result.get("response", "")
+                                if ollama_result
+                                else ""
+                            )
+                            response = {
+                                "id": "chatcmpl-" + os.urandom(8).hex(),
+                                "object": "chat.completion",
+                                "created": 0,
+                                "model": model,
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "message": {
+                                            "role": "assistant",
+                                            "content": response_content,
+                                        },
+                                        "finish_reason": "stop",
+                                    }
+                                ],
+                            }
+                            log(f"[{request_id}] Response: {response_content[:100]}...")
+
+                            duration_ms = int(
+                                (
+                                    datetime.datetime.now() - request_start_time
+                                ).total_seconds()
+                                * 1000
+                            )
+                            database.log_query(
+                                query_text=user_message[:500],
+                                query_summary=database.summarize_query(user_message),
+                                model_used=model,
+                                provider=str(provider or "unknown"),
+                                api_mode=api_mode,
+                                response_time_ms=duration_ms,
+                                response_length=len(response_content),
+                                success=True,
+                            )
+
+                            self.send_json(response)
+                            return
+                        except Exception as e:
+                            log(f"[{request_id}] Error parsing response: {e}", "ERROR")
+                            log(f"[{request_id}] Raw response: {result[:500]}", "ERROR")
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                continue
+                            self.send_json(
+                                {"error": str(e), "detail": result[:500]}, 500
+                            )
+                            return
                 else:
                     # Use /api/chat (default)
                     ollama_data = {
