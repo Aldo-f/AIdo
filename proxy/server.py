@@ -588,12 +588,13 @@ def select_model(prompt, provider_hint=None):
     return None, None, None
 
 
-def select_model_by_type(prompt, model_type="auto"):
+def select_model_by_type(prompt, model_type="auto", failed_provider=None):
     """Select model based on type hint: auto, cloud, local
 
     Args:
         prompt: The user prompt
         model_type: "auto", "cloud", or "local"
+        failed_provider: provider name to skip (for fallback)
 
     Returns:
         tuple: (model_name, provider_name, endpoint)
@@ -631,8 +632,11 @@ def select_model_by_type(prompt, model_type="auto"):
         else:  # auto
             providers_to_try = cloud_providers if cloud_providers else local_providers
 
-    # Find first available model
+    # Find first available model, skipping failed provider if specified
     for name, info in providers_to_try:
+        if failed_provider and name == failed_provider:
+            log(f"Skipping failed provider: {name}")
+            continue
         models = info["models"]
         models = [m for m in models if m not in failed_model_names]
         if models:
@@ -697,9 +701,9 @@ def forward_request(
     try:
         start_time = datetime.datetime.now()
         status_code = 200
-        # Use appropriate timeout - 60s for local providers (Ollama can be slow), 30s for cloud
+        # Use appropriate timeout - 120s for local providers (Ollama can be very slow), 30s for cloud
         is_local = "localhost" in endpoint or "127.0.0.1" in endpoint
-        timeout = 300 if stream else (60 if is_local else 30)
+        timeout = 300 if stream else (120 if is_local else 30)
         if stream:
             response = urllib.request.urlopen(req, timeout=timeout)
         else:
@@ -753,9 +757,9 @@ def forward_streaming_request(endpoint, path, data, api_key=None, provider_name=
     )
 
     try:
-        # Use appropriate timeout - 60s for local providers, 30s for cloud
+        # Use appropriate timeout - 120s for local providers (Ollama can be very slow), 30s for cloud
         is_local = "localhost" in endpoint or "127.0.0.1" in endpoint
-        timeout = 60 if is_local else 30
+        timeout = 120 if is_local else 30
 
         response = urllib.request.urlopen(req, timeout=timeout)
 
@@ -1055,42 +1059,146 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                 is_streaming = request_data.get("stream", False)
 
                 if is_streaming:
-                    # Streaming mode - forward SSE chunks with fallback support
+                    # Streaming mode - forward SSE chunks with multi-provider fallback
                     log(f"[{request_id}] Streaming mode enabled")
 
-                    # Collect chunks first to check for errors
-                    chunks = []
-                    error_occurred = False
-                    for chunk in forward_streaming_request(
-                        endpoint,
-                        "/v1/chat/completions",
-                        body,
-                        api_key=api_key,
-                        provider_name=provider,
-                    ):
-                        chunks.append(chunk)
-                        # Check if chunk contains error
-                        try:
-                            chunk_str = chunk.decode()
-                            if '"error"' in chunk_str:
-                                error_occurred = True
-                                log(
-                                    f"[{request_id}] Error in streaming response, will try fallback"
-                                )
-                                break
-                        except:
-                            pass
+                    # Track failed providers to try all cloud providers before local
+                    failed_providers = set()
+                    current_provider = provider
 
-                    # If error occurred, try fallback
-                    if error_occurred:
-                        if not fallback_attempted:
-                            fallback_attempted = True
-                            log(
-                                f"[{request_id}] Streaming failed, trying fallback model..."
-                            )
-                            continue
-                        else:
-                            # Already tried fallback, send error
+                    while True:
+                        # Try current provider
+                        chunks = []
+                        error_occurred = False
+
+                        # Get fresh key for this provider
+                        if current_provider in ("opencode-zen", "gemini", "cloud"):
+                            api_key, key_name = get_next_key(current_provider)
+                            if not api_key:
+                                log(
+                                    f"[{request_id}] No more keys for {current_provider}, trying next provider"
+                                )
+                                failed_providers.add(current_provider)
+                                # Try to get another cloud provider
+                                model_type = (
+                                    requested_model.split("/")[1]
+                                    if requested_model
+                                    and requested_model.startswith("aido/")
+                                    else "auto"
+                                )
+                                new_model, new_provider, new_endpoint = (
+                                    select_model_by_type(
+                                        user_message,
+                                        model_type,
+                                        failed_provider=current_provider,
+                                    )
+                                )
+                                if (
+                                    new_provider
+                                    and new_provider not in failed_providers
+                                ):
+                                    current_provider = new_provider
+                                    endpoint = new_endpoint
+                                    model = new_model
+                                    log(
+                                        f"[{request_id}] Switching to {current_provider}"
+                                    )
+                                    continue
+                                else:
+                                    # No more providers
+                                    if not fallback_attempted:
+                                        fallback_attempted = True
+                                        log(
+                                            f"[{request_id}] All cloud providers failed, falling back to local..."
+                                        )
+                                        # Force local selection
+                                        (
+                                            fallback_model,
+                                            fallback_provider,
+                                            fallback_endpoint,
+                                        ) = select_model_by_type(user_message, "local")
+                                        if fallback_model:
+                                            current_provider = fallback_provider
+                                            endpoint = fallback_endpoint
+                                            model = fallback_model
+                                            continue
+                                    # Send error
+                                    self.send_response(503)
+                                    self.send_header("Content-Type", "application/json")
+                                    self.end_headers()
+                                    self.wfile.write(
+                                        json.dumps(
+                                            {"error": "All providers failed"}
+                                        ).encode()
+                                    )
+                                    return
+
+                        for chunk in forward_streaming_request(
+                            endpoint,
+                            "/v1/chat/completions",
+                            body,
+                            api_key=api_key,
+                            provider_name=current_provider,
+                        ):
+                            chunks.append(chunk)
+                            # Check if chunk contains error
+                            try:
+                                chunk_str = chunk.decode()
+                                if '"error"' in chunk_str:
+                                    error_occurred = True
+                                    log(
+                                        f"[{request_id}] Error in streaming response from {current_provider}"
+                                    )
+                                    break
+                            except:
+                                pass
+
+                        # If error occurred, try next provider
+                        if error_occurred:
+                            failed_providers.add(current_provider)
+                            if current_provider in ("opencode-zen", "gemini", "cloud"):
+                                # Try another cloud provider first
+                                model_type = (
+                                    requested_model.split("/")[1]
+                                    if requested_model
+                                    and requested_model.startswith("aido/")
+                                    else "auto"
+                                )
+                                new_model, new_provider, new_endpoint = (
+                                    select_model_by_type(
+                                        user_message,
+                                        model_type,
+                                        failed_provider=current_provider,
+                                    )
+                                )
+                                if (
+                                    new_provider
+                                    and new_provider not in failed_providers
+                                ):
+                                    current_provider = new_provider
+                                    endpoint = new_endpoint
+                                    model = new_model
+                                    log(
+                                        f"[{request_id}] Trying next cloud provider: {current_provider}"
+                                    )
+                                    continue
+
+                            # Try fallback to local
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                fallback_model, fallback_provider, fallback_endpoint = (
+                                    select_model_by_type(user_message, "local")
+                                )
+                                if fallback_model:
+                                    current_provider = fallback_provider
+                                    endpoint = fallback_endpoint
+                                    model = fallback_model
+                                    log(
+                                        f"[{request_id}] Falling back to local: {current_provider}"
+                                    )
+                                    continue
+
+                            # All failed
                             self.send_response(503)
                             self.send_header("Content-Type", "application/json")
                             self.end_headers()
@@ -1098,6 +1206,25 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                                 json.dumps({"error": "All providers failed"}).encode()
                             )
                             return
+
+                        # Success! Send streaming response
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "keep-alive")
+                        self.end_headers()
+
+                        for chunk in chunks:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+
+                        # Send [DONE] marker
+                        self.wfile.write(b"data: [DONE]\n\n")
+                        self.wfile.flush()
+                        log(
+                            f"[{request_id}] Streaming response completed via {current_provider}"
+                        )
+                        return
 
                     # No error, send streaming response
                     self.send_response(200)
