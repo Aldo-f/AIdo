@@ -188,10 +188,10 @@ async def handle_auto_chat(
     if result:
         return result
 
-    error_data = {"error": "No providers available"}
+    error_data: dict[str, Any] = {"error": "No providers available"}
     if return_metadata:
         error_data["model"] = model
-        error_data["provider"] = None
+        error_data["provider"] = "none"
     return JSONResponse(error_data, status_code=503)
 
 
@@ -205,10 +205,10 @@ async def handle_cloud_chat(
     if result:
         return result
 
-    error_data = {"error": "No cloud providers available"}
+    error_data: dict[str, Any] = {"error": "No cloud providers available"}
     if return_metadata:
         error_data["model"] = model
-        error_data["provider"] = None
+        error_data["provider"] = "none"
     return JSONResponse(error_data, status_code=503)
 
 
@@ -222,10 +222,10 @@ async def handle_local_chat(
     if result:
         return result
 
-    error_data = {"error": "No local providers available"}
+    error_data: dict[str, Any] = {"error": "No local providers available"}
     if return_metadata:
         error_data["model"] = model
-        error_data["provider"] = None
+        error_data["provider"] = "none"
     return JSONResponse(error_data, status_code=503)
 
 
