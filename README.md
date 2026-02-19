@@ -2,16 +2,19 @@
 
 A unified AI CLI that intelligently routes queries across multiple providers (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI). Built with FastAPI for optimal performance.
 
+**Cross-platform**: Works on Linux, macOS, and Windows.
+
 ## Architecture
 
 AIDO follows the **DRY (Don't Repeat Yourself)** principle - all API logic is centralized in the FastAPI proxy server. The CLI is a thin wrapper that delegates everything to the proxy.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        aido.sh (CLI)                            │
+│                       aido.py (CLI)                             │
 │  - start/stop proxy                                             │
 │  - help system                                                  │
 │  - config management                                            │
+│  - streaming responses (default)                                │
 │  - thin wrapper for queries (calls proxy)                      │
 └─────────────────────────┬───────────────────────────────────────┘
                           │ HTTP localhost:11999
@@ -41,15 +44,41 @@ AIDO follows the **DRY (Don't Repeat Yourself)** principle - all API logic is ce
 pip install -r requirements.txt
 
 # 2. Start the proxy
-./aido.sh serve
+python aido.py serve
 
-# 3. Query using AIDO (proxy must be running)
-./aido.sh run "Hello, help me write a function"
+# 3. Query using AIDO (proxy must be running) - streaming is default
+python aido.py run "Hello, help me write a function"
 
 # 4. For OpenCode integration
-./aido.sh connect opencode
+python aido.py connect opencode
 # Then restart OpenCode
 ```
+
+## Installation
+
+### Option 1: Download Binary (Recommended)
+
+Download pre-built binaries from [Releases](https://github.com/aldo-f/aido/releases):
+- `aido` (Linux)
+- `aido` (macOS)
+- `aido.exe` (Windows)
+
+```bash
+# Linux/macOS
+chmod +x aido
+sudo mv aido /usr/local/bin/
+
+# Windows: Add aido.exe to PATH
+```
+
+### Option 2: Run with Python
+
+```bash
+pip install -r requirements.txt
+python aido.py serve
+```
+
+See [BUILD.md](BUILD.md) for building from source.
 
 ## Commands
 
@@ -123,7 +152,7 @@ curl -X POST http://localhost:11999/v1/query \
 ### Connect to OpenCode
 
 ```bash
-./aido.sh connect opencode
+python aido.py connect opencode
 ```
 
 This configures OpenCode to use AIDO as a provider. After running:
@@ -136,16 +165,13 @@ To use cloud providers (Zen, Gemini, OpenAI), add API keys:
 
 ```bash
 # Open auth page to get API key
-./aido.sh auth zen
+python aido.py auth zen
 
 # Add the key to AIDO
-./aido key add opencode-zen <your-api-key>
+python aido.py key add opencode-zen <your-api-key>
 
 # Check keys
-./aido key list
-
-# Test keys
-./aido key test opencode-zen
+python aido.py key list
 ```
 
 ### Providers
@@ -171,17 +197,14 @@ Key failures are **persisted in SQLite database** (`~/.aido-data/aido.db`), so f
 
 ```bash
 # Add multiple keys
-./aido key add opencode-zen sk-zen-xxx-1 "primary"
-./aido key add opencode-zen sk-zen-xxx-2 "backup"
+python aido.py key add opencode-zen sk-zen-xxx-1 "primary"
+python aido.py key add opencode-zen sk-zen-xxx-2 "backup"
 
 # List keys
-./aido key list
+python aido.py key list
 
 # Delete a key by index
-./aido key delete opencode-zen 1
-
-# Test all keys
-./aido key test opencode-zen
+python aido.py key delete opencode-zen 1
 ```
 
 ### Model Selection
@@ -214,31 +237,42 @@ aido connect --help
 
 ```bash
 # Start proxy (required before queries)
-aido serve
+python aido.py serve
 
-# Query with auto model selection
-aido run "How do I reverse a list in Python?"
+# Query with streaming (default)
+python aido.py run "How do I reverse a list in Python?"
 
-# Interactive mode
-aido run
+# Query without streaming (wait for full response)
+python aido.py run --no-stream "Hello"
 
-# Use local provider only
-aido run -p local "Hello"
+# Interactive mode (streaming enabled)
+python aido.py run
 
 # List models
-aido list
+python aido.py list
 
 # Check status
-aido status
+python aido.py status
 ```
 
 ## Install Globally
 
+### From Binary
 ```bash
-./aido.sh --install
+# Download binary, then:
+chmod +x aido
+sudo mv aido /usr/local/bin/
 ```
 
-This installs `aido` to `~/.local/bin/aido` (or `/usr/local/bin/aido`).
+### From Source
+```bash
+# Build with PyInstaller
+pip install pyinstaller
+pyinstaller --onefile aido.py
+sudo mv dist/aido /usr/local/bin/
+```
+
+See [BUILD.md](BUILD.md) for detailed build instructions.
 
 ## Development
 
@@ -246,8 +280,11 @@ This installs `aido` to `~/.local/bin/aido` (or `/usr/local/bin/aido`).
 
 ```
 aido/
-├── aido.sh               # Main CLI (thin wrapper)
+├── aido.py               # Main CLI (Python, cross-platform)
 ├── requirements.txt      # Python dependencies
+├── BUILD.md              # Build instructions
+├── .github/workflows/
+│   └── build.yml         # CI/CD for building binaries
 ├── proxy/
 │   ├── __init__.py       # Module exports
 │   ├── config.py         # Config loading, provider detection
@@ -263,7 +300,7 @@ aido/
 │       ├── ollama.py     # Ollama (local) provider
 │       └── dmr.py        # Docker Model Runner provider
 └── tests/
-    └── aido_test.sh      # 44 tests
+    └── aido_test.sh      # Test suite
 ```
 
 ### Debug
@@ -282,6 +319,8 @@ curl http://localhost:11999/v1/models
 
 ### Key Features
 
+- **Cross-Platform**: Works on Linux, macOS, and Windows
+- **Streaming by Default**: See responses as they're generated
 - **DRY Architecture**: All API logic in one place (proxy)
 - **FastAPI**: High-performance async server
 - **Key Persistence**: Failed keys stored in SQLite with cooldown
@@ -289,3 +328,4 @@ curl http://localhost:11999/v1/models
 - **SSE Filtering**: Removes SSE comments from streaming responses
 - **Help System**: Every command has `--help`
 - **Meta Models**: `aido/auto`, `aido/cloud`, `aido/local`
+- **CI/CD**: Automatic binary builds on push
