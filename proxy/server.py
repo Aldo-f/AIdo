@@ -304,9 +304,12 @@ async def stream_provider(
 ) -> AsyncGenerator[str, None]:
     try:
         async for chunk in provider.chat(messages, model, True, api_key):
-            yield chunk
+            if chunk:
+                yield chunk
     except Exception as e:
         yield f'{{"error": "{str(e)}"}}\n\n'
+    finally:
+        yield "data: [DONE]\n\n"
 
 
 @app.post("/v1/query")
@@ -327,7 +330,7 @@ async def simple_query(request: Request):
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
 
-    log(f"Query: model={model}, query={query[:50]}...")
+    log(f"Query: model={model}, stream={stream}, query={query[:50]}...")
 
     messages = [{"role": "user", "content": query}]
 
@@ -350,12 +353,28 @@ async def simple_query(request: Request):
         end_time = time.time()
         response_time_ms = int((end_time - start_time) * 1000)
 
+        if result is None:
+            return JSONResponse(
+                {"error": "No providers available", "query": query}, status_code=503
+            )
+
+        if isinstance(result, StreamingResponse):
+
+            async def add_metadata():
+                async for chunk in result.body_iterator:
+                    yield chunk
+
+            return StreamingResponse(
+                add_metadata(),
+                media_type="text/event-stream",
+            )
+
         if isinstance(result, JSONResponse):
-            body = getattr(result, "body", b"{}")
-            if hasattr(body, "decode"):
-                body_str = body.decode()
+            body_content = getattr(result, "body", b"{}")
+            if hasattr(body_content, "decode"):
+                body_str = body_content.decode()
             else:
-                body_str = str(body)
+                body_str = str(body_content)
             try:
                 response_body = json.loads(body_str)
             except Exception:

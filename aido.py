@@ -146,21 +146,33 @@ def is_proxy_running(port: int = DEFAULT_PORT) -> bool:
 
 
 def stream_response(response: httpx.Response):
-    for line in response.iter_lines():
-        if line.startswith("data: "):
-            data = line[6:]
-            if data == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data)
-                if "choices" in chunk:
-                    for choice in chunk["choices"]:
-                        delta = choice.get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            print(content, end="", flush=True)
-            except json.JSONDecodeError:
+    try:
+        for line in response.iter_lines():
+            if not line:
                 continue
+            if line.startswith("data: "):
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    if "choices" in chunk:
+                        for choice in chunk["choices"]:
+                            delta = choice.get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                print(content, end="", flush=True)
+                except json.JSONDecodeError:
+                    continue
+            elif line.startswith("{"):
+                try:
+                    error_data = json.loads(line)
+                    if "error" in error_data:
+                        print(f"\n[ERROR] {error_data['error']}", flush=True)
+                except json.JSONDecodeError:
+                    pass
+    except Exception as e:
+        print(f"\n[WARNING] Stream ended unexpectedly: {e}", flush=True)
     print()
 
 
@@ -177,15 +189,47 @@ def execute_query(
     try:
         with httpx.Client(timeout=120.0) as client:
             if stream:
-                with client.stream("POST", url, json=payload) as response:
+                try:
+                    response = client.post(url, json=payload)
                     if response.status_code != 200:
                         error(f"Request failed: {response.status_code}")
                         return 1
-                    stream_response(response)
-            else:
+
+                    content_type = response.headers.get("content-type", "")
+                    if "text/event-stream" in content_type:
+                        stream_response(response)
+                    else:
+                        data = response.json()
+                        if "choices" in data:
+                            content = data["choices"][0]["message"]["content"]
+                            print(content)
+                        elif "error" in data:
+                            error(data["error"])
+                            return 1
+                except (
+                    httpx.RemoteProtocolError,
+                    httpx.ConnectError,
+                    httpx.ReadTimeout,
+                ) as e:
+                    warning(f"Streaming failed: {e}")
+                    warning("Trying non-streaming mode...")
+                    stream = False
+                except Exception as e:
+                    warning(f"Streaming error: {e}")
+                    warning("Trying non-streaming mode...")
+                    stream = False
+
+            if not stream:
+                payload["stream"] = False
                 response = client.post(url, json=payload)
                 if response.status_code != 200:
                     error(f"Request failed: {response.status_code}")
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error(error_data["error"])
+                    except Exception:
+                        pass
                     return 1
                 data = response.json()
                 if "choices" in data:
@@ -194,6 +238,8 @@ def execute_query(
                 elif "error" in data:
                     error(data["error"])
                     return 1
+                elif "response" in data:
+                    print(data["response"])
     except Exception as e:
         error(f"Query failed: {e}")
         return 1
