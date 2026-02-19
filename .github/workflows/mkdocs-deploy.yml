@@ -42,7 +42,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          site_dir: site
+          path: 'site'
 
       - name: Deploy to GitHub Pages
         id: deployment
