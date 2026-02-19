@@ -233,6 +233,26 @@ def is_meta_model(model: str) -> bool:
     return model.startswith("aido/") or model in ("auto", "cloud", "local")
 
 
+async def safe_stream_wrapper(
+    generator: AsyncGenerator[str, None], provider_name: str
+) -> AsyncGenerator[str, None]:
+    """Wrap a streaming generator to handle errors gracefully."""
+    try:
+        async for chunk in generator:
+            yield chunk
+    except Exception as e:
+        error_str = str(e)
+        log(f"Streaming error from {provider_name}: {error_str}", "ERROR")
+        if "401" in error_str or "403" in error_str or "429" in error_str:
+            try:
+                status_code = int(error_str.split()[0])
+                key_manager.mark_key_failed(provider_name, status_code, error_str)
+            except (ValueError, IndexError):
+                pass
+        yield f'{{"error": "{error_str}"}}\n\n'
+        yield "data: [DONE]\n\n"
+
+
 async def try_providers(
     providers: list,
     model: str,
@@ -259,31 +279,27 @@ async def try_providers(
         try:
             log(f"Trying {provider_name} with model {model_to_use}")
 
-            if stream and provider_name in ("opencode-zen", "openai"):
-                try:
-                    test_result = await provider.chat(
-                        messages, model_to_use, False, api_key
-                    )
-                    key_manager.mark_key_success(provider_name)
-                except Exception as key_error:
-                    error_str = str(key_error)
-                    log(f"Key validation failed for {provider_name}: {error_str}")
-                    if "401" in error_str or "403" in error_str or "429" in error_str:
-                        try:
-                            status_code = int(error_str.split()[0])
-                            key_manager.mark_key_failed(
-                                provider_name, status_code, error_str
-                            )
-                        except (ValueError, IndexError):
-                            pass
-                    raise
+            disable_cloud_streaming = (
+                stream
+                and provider_name in ("opencode-zen", "openai")
+                and (model in ("auto", "local") or is_meta_model(model))
+            )
 
+            if (
+                stream
+                and provider_name in ("opencode-zen", "openai")
+                and not disable_cloud_streaming
+            ):
+                generator = await provider.chat(messages, model_to_use, True, api_key)
                 return StreamingResponse(
-                    provider.chat(messages, model_to_use, True, api_key),
+                    safe_stream_wrapper(generator, provider_name),
                     media_type="text/event-stream",
                 )
             else:
-                result = await provider.chat(messages, model_to_use, stream, api_key)
+                use_stream_for_provider = stream and not disable_cloud_streaming
+                result = await provider.chat(
+                    messages, model_to_use, use_stream_for_provider, api_key
+                )
 
                 key_manager.mark_key_success(provider_name)
 

@@ -368,6 +368,7 @@ def cmd_providers(args):
 
 
 def cmd_run(args):
+    model = getattr(args, "model", "aido/auto")
     if not args.query:
         info("Interactive mode - type /help for commands, /exit to quit")
         print()
@@ -396,11 +397,11 @@ def cmd_run(args):
                     warning(f"Unknown command: {query}")
                 continue
 
-            execute_query(query, stream=not args.no_stream)
+            execute_query(query, model=model, stream=not args.no_stream)
             print()
         return 0
 
-    return execute_query(" ".join(args.query), stream=not args.no_stream)
+    return execute_query(" ".join(args.query), model=model, stream=not args.no_stream)
 
 
 def cmd_pull(args):
@@ -717,10 +718,28 @@ def main():
     providers_parser = subparsers.add_parser("providers", help="List providers")
     providers_parser.set_defaults(func=cmd_providers)
 
-    run_parser = subparsers.add_parser("run", help="Run query or interactive mode")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run query or interactive mode",
+        description="""Models:
+  aido/auto   Auto-select based on config (default)
+  aido/cloud  Cloud providers only (Zen, Gemini, OpenAI)
+  aido/local  Local providers only (Ollama, DMR)
+
+Examples:
+  aido run "Hello"                    # Uses aido/auto
+  aido run --model aido/local "Hello" # Force local model
+  aido run --model aido/cloud "Hello" # Force cloud model""",
+    )
     run_parser.add_argument("query", nargs="*", help="Query to run")
     run_parser.add_argument(
         "--no-stream", action="store_true", help="Disable streaming"
+    )
+    run_parser.add_argument(
+        "--model",
+        "-m",
+        default="aido/auto",
+        help="Model to use: aido/auto, aido/cloud, aido/local (default: aido/auto)",
     )
     run_parser.set_defaults(func=cmd_run)
 
