@@ -1,15 +1,15 @@
 {
   // AIDO - OpenCode Configuration
-  // Run "aido proxy start" before using OpenCode
+  // Run "aido serve" before using OpenCode
   "$schema": "https://opencode.ai/config.json",
   "provider": {
     "aido": {
       "name": "AIDO",
       "options": {
-        "baseURL": "http://localhost:11999",
-        "apiKey": "dummy" // Not required for local proxy
+        "baseURL": "http://localhost:11999/v1",
+        "apiKey": "dummy"
       }
     }
   },
-  "model": "aido"
+  "model": "aido/auto"
 }
