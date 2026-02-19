@@ -18,24 +18,31 @@ A unified AI CLI that intelligently routes queries across multiple providers.
 ## Quick Start
 
 ```bash
+# Install dependencies
+pip install -r requirements.txt
+
 # Start the proxy
-./aido.sh serve
+python aido.py serve
 
 # Connect OpenCode to use AIDO
-./aido.sh connect opencode
+python aido.py connect opencode
 
-# Query using AIDO
-./aido.sh "Hello, help me write a function"
+# Query using AIDO (streaming enabled by default)
+python aido.py run "Hello, help me write a function"
 ```
 
 ---
 
 ## Installation
 
+### Option 1: Python (recommended for development)
 ```bash
-# Install globally
-./aido.sh --install
+pip install -r requirements.txt
+python aido.py serve
 ```
+
+### Option 2: Download Binary
+Download pre-built binaries from [Releases](https://github.com/aldo-f/aido/releases)
 
 ---
 
@@ -95,13 +102,13 @@ AIDO supports multiple providers:
 
 ```bash
 # Open auth page to get API key
-./aido.sh auth zen
+python aido.py auth zen
 
 # Add the key to AIDO
-./aido key add opencode-zen <your-api-key>
+python aido.py key add opencode-zen <your-api-key>
 
-# Test the key
-./aido key test opencode-zen
+# List keys
+python aido.py key list
 ```
 
 ---

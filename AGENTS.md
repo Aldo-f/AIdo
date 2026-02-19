@@ -6,7 +6,7 @@ AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Doc
 
 **Key Principle: DRY (Don't Repeat Yourself)**
 
-All API logic is centralized in the FastAPI proxy server. The CLI (`aido.sh`) is a thin wrapper that delegates all queries to the proxy. This ensures:
+All API logic is centralized in the FastAPI proxy server. The CLI (`aido.py`) is a thin wrapper that delegates all queries to the proxy. This ensures:
 - Single source of truth for API handling
 - Consistent behavior between CLI and OpenCode
 - Centralized key management with persistence
@@ -17,7 +17,7 @@ All API logic is centralized in the FastAPI proxy server. The CLI (`aido.sh`) is
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        aido.sh (CLI)                            │
+│                       aido.py (CLI)                             │
 │  - start/stop proxy                                             │
 │  - help system                                                  │
 │  - config management                                            │
@@ -108,10 +108,10 @@ make all
 ### Server Commands
 
 ```bash
-./aido.sh serve          # Start proxy (default port 11999)
-./aido.sh serve 8080     # Custom port
-./aido.sh stop           # Stop proxy
-./aido.sh status         # Check status
+python aido.py serve          # Start proxy (default port 11999)
+python aido.py serve 8080     # Custom port
+python aido.py stop           # Stop proxy
+python aido.py status         # Check status
 
 # Or directly with uvicorn:
 python3 -m uvicorn proxy.server:app --host 0.0.0.0 --port 11999
@@ -122,11 +122,11 @@ python3 -m uvicorn proxy.server:app --host 0.0.0.0 --port 11999
 **Note: Proxy must be running (`aido serve`) before queries work.**
 
 ```bash
-./aido.sh run "Hello"    # Run query
-./aido.sh run            # Interactive mode
-./aido.sh run -c         # Continue last session
-./aido.sh list           # List available models
-./aido.sh pull llama3.2  # Download model
+python aido.py run "Hello"    # Run query
+python aido.py run            # Interactive mode
+python aido.py run -c         # Continue last session
+python aido.py list           # List available models
+python aido.py pull llama3.2  # Download model
 ```
 
 ### Manual API Testing
@@ -251,7 +251,8 @@ key_manager.mark_key_success(provider)
 ```
 aido/
 ├── Makefile              # Build/lint/format commands
-├── aido.sh               # Main CLI (thin wrapper)
+├── aido.py               # Main CLI (Python)
+├── BUILD.md              # Build instructions
 ├── requirements.txt      # Python dependencies
 ├── proxy/
 │   ├── __init__.py       # Module exports
@@ -356,7 +357,7 @@ Config: `~/.aido-data/config.json`
 1. **Proxy required**: Always run `aido serve` before queries
 2. **Debug**: Check `~/.aido-data/logs/proxy.log`
 3. **Database**: `sqlite3 ~/.aido-data/aido.db`
-4. **Quick restart**: `./aido.sh stop && ./aido.sh serve`
+4. **Quick restart**: `python aido.py stop && python aido.py serve`
 5. **Provider status**: `curl localhost:11999/health`
 6. **Clear failed keys**: Delete from `key_failures` table
 
