@@ -14,6 +14,7 @@ from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi import Response as FastAPIResponse
 import uvicorn
 import httpx
 
@@ -102,6 +103,19 @@ def update_session_provider(session_id: str | None, provider: str, model: str):
                 json.dump(session_data, f, indent=2)
         except Exception:
             pass
+
+
+def make_streaming_response(generator: AsyncGenerator) -> StreamingResponse:
+    """Create a StreamingResponse with SSE-compatible headers."""
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 def import_datetime_now():
@@ -366,9 +380,8 @@ async def try_providers(
                         generator = await provider.chat(
                             messages, model_to_use, True, api_key
                         )
-                        return StreamingResponse(
-                            safe_stream_wrapper(generator, provider_name, session_id),
-                            media_type="text/event-stream",
+                        return make_streaming_response(
+                            safe_stream_wrapper(generator, provider_name, session_id)
                         )
                     else:
                         use_stream_for_provider = stream and not disable_cloud_streaming
@@ -390,10 +403,7 @@ async def try_providers(
                             update_session_provider(
                                 session_id, provider_name, model_to_use
                             )
-                            return StreamingResponse(
-                                result,
-                                media_type="text/event-stream",
-                            )
+                            return make_streaming_response(result)
                 except Exception as e:
                     log(f"Cached provider {provider_name} failed: {e}")
                     if "401" in str(e) or "403" in str(e) or "429" in str(e):
@@ -439,9 +449,8 @@ async def try_providers(
             ):
                 generator = await provider.chat(messages, model_to_use, True, api_key)
                 update_session_provider(session_id, provider_name, model_to_use)
-                return StreamingResponse(
-                    safe_stream_wrapper(generator, provider_name, session_id),
-                    media_type="text/event-stream",
+                return make_streaming_response(
+                    safe_stream_wrapper(generator, provider_name, session_id)
                 )
             else:
                 use_stream_for_provider = stream and not disable_cloud_streaming
@@ -459,10 +468,7 @@ async def try_providers(
                     return JSONResponse(result)
                 elif isinstance(result, AsyncGenerator):
                     update_session_provider(session_id, provider_name, model_to_use)
-                    return StreamingResponse(
-                        result,
-                        media_type="text/event-stream",
-                    )
+                    return make_streaming_response(result)
 
         except Exception as e:
             error_str = str(e)
@@ -559,10 +565,7 @@ async def simple_query(request: Request):
                 async for chunk in result.body_iterator:
                     yield chunk
 
-            return StreamingResponse(
-                add_metadata(),
-                media_type="text/event-stream",
-            )
+            return make_streaming_response(add_metadata())
 
         if isinstance(result, JSONResponse):
             body_content = getattr(result, "body", b"{}")
