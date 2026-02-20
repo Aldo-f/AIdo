@@ -1,5 +1,4 @@
 from typing import Optional
-from datetime import datetime, timedelta
 import hashlib
 
 import config

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-02-20
+
+### Added
+- **Session-based provider caching**: Use `--session <name>` to cache provider selection for a session
+- **Cloud provider streaming**: Streaming now enabled for all cloud providers (Zen, OpenAI, Gemini)
+- **SSE headers**: Added `X-Accel-Buffering`, `Cache-Control`, and `Connection` headers for OpenCode compatibility
+
+### Fixed
+- **Model resolution**: Fixed `aido/local` and `aido/cloud` models not resolving correctly
+- **Key manager**: Now uses database only for key tracking (removed in-memory fallback)
+
 ## [1.1.1] - 2026-02-19
 
 ### Fixed

@@ -33,6 +33,13 @@ python aido.py stop       # Stop proxy
 python aido.py status     # Check status
 ```
 
+### CLI Options
+```bash
+python aido.py run "prompt"              # Run prompt
+python aido.py run "prompt" --model aido/cloud  # Specify model
+python aido.py run "prompt" --session mychat    # Session-based provider caching
+```
+
 ---
 
 ## Code Style - Python
@@ -94,7 +101,7 @@ key_manager.mark_key_success(provider)
 aido/
 ├── Makefile              # lint, format, test
 ├── aido.py               # Main CLI
-├── pyproject.toml        # Version 1.1.1
+├── pyproject.toml        # Version 1.2.0
 ├── proxy/
 │   ├── server.py         # FastAPI (all API logic)
 │   ├── config.py         # Config, provider detection
@@ -161,9 +168,22 @@ Config: `~/.aido-data/config.json`
 ## Request Flow
 CLI/OpenCode -> POST /v1/chat/completions
   -> Resolve model (aido/auto/cloud/local)
-  -> Select provider based on mode
-  -> Get API key with rotation (skip failed keys)
-  -> Forward to provider
-  -> On success: clear key failure
-  -> On 401/403/429: mark key failed, try next
+  -> Select provider based on mode (or session cache)
+  -> Get API key with rotation (skip failed keys from DB)
+  -> Forward to provider with streaming support
+  -> On success: clear key failure from DB
+  -> On 401/403/429: mark key failed in DB, try next key
   -> Filter SSE comments if streaming
+
+## Streaming
+- Streaming is enabled for all providers (cloud + local)
+- SSE headers added for OpenCode compatibility:
+  - `X-Accel-Buffering: no`
+  - `Cache-Control: no-cache`
+  - `Connection: keep-alive`
+
+## Session-based Provider Caching
+- Use `--session <name>` to cache the provider for a session
+- First request: selects provider based on mode, caches it
+- Subsequent requests: uses same provider (skips selection)
+- Useful for maintaining context with same model

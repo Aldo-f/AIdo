@@ -7,16 +7,12 @@ Multi-provider proxy with key rotation and automatic fallback
 import json
 import os
 import sys
-import signal
-import asyncio
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response
-from fastapi import Response as FastAPIResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-import httpx
 
 sys.path.insert(0, str(Path(__file__).parent))
 

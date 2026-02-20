@@ -12,9 +12,7 @@ import sys
 import signal
 import subprocess
 import time
-import webbrowser
 from pathlib import Path
-from typing import Any
 
 import httpx
 
@@ -333,7 +331,7 @@ def cmd_status(args):
         with httpx.Client(timeout=2.0) as client:
             resp = client.get(f"http://localhost:{DEFAULT_PORT}/health")
             data = resp.json()
-            print(f"AIDO Proxy is running")
+            print("AIDO Proxy is running")
             print(f"Providers: {', '.join(data.get('providers', []))}")
     except Exception as e:
         error(f"Failed to get status: {e}")
@@ -495,7 +493,7 @@ def cmd_key(args):
         config = load_config()
         keys = config["providers"].get(provider, {}).get("keys", [])
         if key is None or int(key) >= len(keys):
-            error(f"Invalid index")
+            error("Invalid index")
             return 1
         del keys[int(key)]
         save_config(config)

@@ -4,7 +4,6 @@ AIDO Database - SQLite for query tracking and model performance
 """
 
 import sqlite3
-import json
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -367,7 +366,7 @@ def save_key_models(provider: str, key_hash: str, model_ids: list):
             """,
                 (provider, key_hash, model_id, timestamp),
             )
-        except:
+        except Exception:
             pass
 
     conn.commit()
