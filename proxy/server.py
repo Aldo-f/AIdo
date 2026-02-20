@@ -370,11 +370,12 @@ async def try_providers(
                 try:
                     log(f"Trying cached {provider_name} with model {model_to_use}")
 
-                    disable_cloud_streaming = (
-                        stream
-                        and provider_name in ("opencode-zen", "openai")
-                        and (model in ("auto", "local") or is_meta_model(model))
-                    )
+                    # disable_cloud_streaming = (
+                    #     stream
+                    #     and provider_name in ("opencode-zen", "openai")
+                    #     and (model in ("auto", "local") or is_meta_model(model))
+                    # )
+                    disable_cloud_streaming = False  # Always allow streaming
 
                     if stream and provider_name not in ("opencode-zen", "openai"):
                         generator = await provider.chat(
@@ -436,11 +437,12 @@ async def try_providers(
         try:
             log(f"Trying {provider_name} with model {model_to_use}")
 
-            disable_cloud_streaming = (
-                stream
-                and provider_name in ("opencode-zen", "openai")
-                and (model in ("auto", "local") or is_meta_model(model))
-            )
+            # disable_cloud_streaming = (
+            #     stream
+            #     and provider_name in ("opencode-zen", "openai")
+            #     and (model in ("auto", "local") or is_meta_model(model))
+            # )
+            disable_cloud_streaming = False  # Always allow streaming
 
             if (
                 stream
