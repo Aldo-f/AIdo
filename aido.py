@@ -177,7 +177,11 @@ def stream_response(response: httpx.Response):
 
 
 def execute_query(
-    query: str, model: str = "aido/auto", stream: bool = True, port: int = DEFAULT_PORT
+    query: str,
+    model: str = "aido/auto",
+    stream: bool = True,
+    port: int = DEFAULT_PORT,
+    session: str | None = None,
 ):
     if not is_proxy_running(port):
         error("AIDO proxy is not running. Run 'aido serve' first.")
@@ -185,6 +189,8 @@ def execute_query(
 
     url = f"http://localhost:{port}/v1/query"
     payload = {"query": query, "model": model, "stream": stream}
+    if session:
+        payload["session_id"] = session
 
     try:
         with httpx.Client(timeout=120.0) as client:
@@ -368,6 +374,8 @@ def cmd_providers(args):
 
 
 def cmd_run(args):
+    model = getattr(args, "model", "aido/auto")
+    session = getattr(args, "session", None)
     if not args.query:
         info("Interactive mode - type /help for commands, /exit to quit")
         print()
@@ -396,11 +404,15 @@ def cmd_run(args):
                     warning(f"Unknown command: {query}")
                 continue
 
-            execute_query(query, stream=not args.no_stream)
+            execute_query(
+                query, model=model, stream=not args.no_stream, session=session
+            )
             print()
         return 0
 
-    return execute_query(" ".join(args.query), stream=not args.no_stream)
+    return execute_query(
+        " ".join(args.query), model=model, stream=not args.no_stream, session=session
+    )
 
 
 def cmd_pull(args):
@@ -641,6 +653,25 @@ def cmd_connect(args):
     return 0
 
 
+def get_session(session_name: str) -> dict | None:
+    session_file = SESSIONS_DIR / f"session-{session_name}.json"
+    if session_file.exists():
+        with open(session_file) as f:
+            return json.load(f)
+    return None
+
+
+def update_session_provider(session_name: str, provider: str, model: str):
+    session_file = SESSIONS_DIR / f"session-{session_name}.json"
+    if session_file.exists():
+        with open(session_file) as f:
+            session_data = json.load(f)
+        session_data["cached_provider"] = provider
+        session_data["cached_model"] = model
+        with open(session_file, "w") as f:
+            json.dump(session_data, f, indent=2)
+
+
 def cmd_session(args):
     action = args.action
 
@@ -667,6 +698,8 @@ def cmd_session(args):
             "name": name,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "messages": [],
+            "cached_provider": None,
+            "cached_model": None,
         }
         with open(session_file, "w") as f:
             json.dump(session_data, f, indent=2)
@@ -717,10 +750,31 @@ def main():
     providers_parser = subparsers.add_parser("providers", help="List providers")
     providers_parser.set_defaults(func=cmd_providers)
 
-    run_parser = subparsers.add_parser("run", help="Run query or interactive mode")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run query or interactive mode",
+        description="""Models:
+  aido/auto   Auto-select based on config (default)
+  aido/cloud  Cloud providers only (Zen, Gemini, OpenAI)
+  aido/local  Local providers only (Ollama, DMR)
+
+Examples:
+  aido run "Hello"                    # Uses aido/auto
+  aido run --model aido/local "Hello" # Force local model
+  aido run --model aido/cloud "Hello" # Force cloud model""",
+    )
     run_parser.add_argument("query", nargs="*", help="Query to run")
     run_parser.add_argument(
         "--no-stream", action="store_true", help="Disable streaming"
+    )
+    run_parser.add_argument(
+        "--model",
+        "-m",
+        default="aido/auto",
+        help="Model to use: aido/auto, aido/cloud, aido/local (default: aido/auto)",
+    )
+    run_parser.add_argument(
+        "--session", "-s", default=None, help="Session name for conversation context"
     )
     run_parser.set_defaults(func=cmd_run)
 
