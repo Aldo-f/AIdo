@@ -49,7 +49,7 @@ export function routeAidoModel(pathname: string): RouteResult {
         provider: 'zen',
         model: parsed.model,
         upstreamPath: '/v1/chat/completions',
-        isAuto: false,
+        isAuto: true,
       };
     }
     return {

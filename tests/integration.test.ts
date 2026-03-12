@@ -23,7 +23,7 @@ describe('resolveProvider integration', () => {
       const result = resolveProvider('/aido/cloud/big-pickle/v1/chat/completions');
       expect(result.provider).toBe('zen');
       expect(result.model).toBe('big-pickle');
-      expect(result.isAidoAuto).toBe(false);
+      expect(result.isAidoAuto).toBe(true);
     });
 
     it('routes /aido/local/v1/chat/completions to ollama-local', () => {

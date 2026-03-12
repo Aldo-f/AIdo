@@ -31,14 +31,14 @@ describe('routeAidoModel', () => {
       const result = routeAidoModel('aido/cloud/big-pickle');
       expect(result.provider).toBe('zen');
       expect(result.model).toBe('big-pickle');
-      expect(result.isAuto).toBe(false);
+      expect(result.isAuto).toBe(true);
     });
 
     it('routes aido/cloud/gpt-4o-mini to zen with specified model', () => {
       const result = routeAidoModel('aido/cloud/gpt-4o-mini');
       expect(result.provider).toBe('zen');
       expect(result.model).toBe('gpt-4o-mini');
-      expect(result.isAuto).toBe(false);
+      expect(result.isAuto).toBe(true);
     });
   });
 
