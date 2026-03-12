@@ -1,48 +1,55 @@
 # aido
 
-Lokale API key rotation proxy voor LLM providers.  
-Roteert keys automatisch bij rate limits. Bijgehouden in SQLite.
+Local API key rotation proxy for LLM providers.  
+Automatically rotates keys on rate limits (429). Cooldowns tracked in SQLite.
 
 ---
 
-## Vereisten
+## Requirements
 
-- **Node.js v22+** — controleer met `node --version`
+- **Node.js v22+** — check with `node --version`
 - **npm**
 
-> Node.js v22 heeft SQLite ingebouwd — geen extra native dependencies.
+> Node.js v22 has SQLite built-in — no native compilation needed.
 
 ---
 
-## Installatie
+## Installation
 
-### Stap 1 — Uitpakken en dependencies installeren
+### Step 1 — Clone and install dependencies
 
 ```bash
-tar -xzf aido-proxy.tar.gz
-cd aido-proxy
+git clone git@github.com:Aldo-f/aido.git
+cd aido
 npm install
 ```
 
-### Stap 2 — `aido` commando beschikbaar maken
+### Step 2 — Make the `aido` command available
 
-**Optie A: systeembreed** (vereist sudo, werkt voor alle users)
+**Option A: system-wide** (requires sudo)
 ```bash
 npm run install:global
 ```
 
-**Optie B: alleen jouw user** (geen sudo nodig, aanbevolen)
+**Option B: current user only** (no sudo needed, recommended)
 ```bash
 npm run install:local
 ```
 
-Zorg dat `~/.local/bin` in je PATH zit (éénmalig):
+Then make sure `~/.local/bin` is in your PATH.
+
+**Bash / Zsh:**
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Stap 3 — Verifieer
+**Fish:**
+```fish
+fish_add_path ~/.local/bin
+```
+
+### Step 3 — Verify
 
 ```bash
 aido --help
@@ -50,40 +57,40 @@ aido --help
 
 ---
 
-## Eerste gebruik
+## Quick start
 
 ```bash
-# 1. Voeg je Zen key toe
-aido add sk-LXREfPN2uSYZ74VW4HLp...
+# 1. Add your Zen key
+aido add sk-yourzenkey...
 
-# 2. Configureer je tools (Claude Code + OpenCode)
+# 2. Configure your tools (Claude Code + OpenCode)
 aido launch
 
-# 3. Start de proxy
+# 3. Start the proxy
 aido proxy
 
-# 4. Test het
-aido run "wat is 2+2"
+# 4. Test it
+aido run "what is 2+2"
 ```
 
 ---
 
-## Alle commando's
+## Commands
 
 ### `aido add <key>`
 
-Voegt een API key toe. Provider wordt automatisch herkend op basis van het key-formaat.
+Adds an API key. Provider is auto-detected from the key format.
 
 ```bash
-aido add sk-zen-key-hier...
+aido add sk-zen-key-here...
 aido add sk-ant-api03-anthropic-key...
 aido add sk-proj-openai-key...
 
-# Provider manueel opgeven
+# Override detection
 aido add some-key --provider groq
 ```
 
-Opgeslagen in `.env` naast de project map:
+Stored in `.env` next to the project folder:
 ```
 ZEN_KEYS=key1,key2,key3
 ANTHROPIC_KEYS=key1
@@ -91,39 +98,39 @@ ANTHROPIC_KEYS=key1
 
 ### `aido run <prompt>`
 
-Stuurt een prompt naar een model. Handig om snel te testen.
+Sends a prompt to a model. Useful for quick testing.
 
 ```bash
-aido run "wat is 2+2"
-aido run "schrijf een haiku" --model mimo-v2-flash-free
-aido run "leg recursie uit" --provider zen --stream
+aido run "what is 2+2"
+aido run "write a haiku" --model mimo-v2-flash-free
+aido run "explain recursion" --provider zen --stream
 ```
 
 ### `aido models [provider]`
 
-Haalt de beschikbare modellen op via jouw key. Resultaten worden 1 uur gecached.
+Fetches available models using your key. Results cached for 1 hour.
 
 ```bash
-aido models          # alle providers met een key
-aido models zen      # alleen Zen
-aido models --sync   # cache negeren, opnieuw ophalen
+aido models          # all configured providers
+aido models zen      # specific provider
+aido models --sync   # ignore cache, force refresh
 ```
 
-> Omdat de call gedaan wordt met jouw key, zie je exact welke modellen jouw account kan gebruiken.
-> Een betaalde key kan meer modellen tonen dan een gratis key.
+> Since the call is made with your own key, you see exactly which models your account can use.
+> A paid key may return more models than a free key.
 
-Vrije modellen op OpenCode Zen (op het moment van schrijven):
+Free models on OpenCode Zen (at time of writing):
 
-| Model ID                 | Naam                 |
-|--------------------------|----------------------|
-| `big-pickle`             | Big Pickle           |
-| `mimo-v2-flash-free`     | MiMo V2 Flash        |
-| `nemotron-3-super-free`  | Nemotron 3 Super     |
-| `minimax-m2.5-free`      | MiniMax M2.5         |
+| Model ID                  | Name                |
+|---------------------------|---------------------|
+| `big-pickle`              | Big Pickle          |
+| `mimo-v2-flash-free`      | MiMo V2 Flash       |
+| `nemotron-3-super-free`   | Nemotron 3 Super    |
+| `minimax-m2.5-free`       | MiniMax M2.5        |
 
 ### `aido proxy`
 
-Start de proxy server op poort 4141 (instelbaar via `PROXY_PORT` in `.env`).
+Starts the proxy server on port 4141 (configurable via `PROXY_PORT` in `.env`).
 
 ```bash
 aido proxy
@@ -131,30 +138,30 @@ aido proxy
 ```
 
 Routes:
-| URL                    | Naar           |
-|------------------------|----------------|
-| `/v1/...`              | Zen (default)  |
-| `/zen/v1/...`          | Zen expliciet  |
-| `/openai/v1/...`       | OpenAI         |
-| `/anthropic/...`       | Anthropic      |
+| URL                  | Forwards to     |
+|----------------------|-----------------|
+| `/v1/...`            | Zen (default)   |
+| `/zen/v1/...`        | Zen explicit    |
+| `/openai/v1/...`     | OpenAI          |
+| `/anthropic/...`     | Anthropic       |
 
 ### `aido launch`
 
-Configureert Claude Code en/of OpenCode om de proxy te gebruiken.
+Configures Claude Code and/or OpenCode to use the proxy.
 
 ```bash
-aido launch                    # beide
-aido launch --target claude    # alleen Claude Code
-aido launch --target opencode  # alleen OpenCode
+aido launch                    # both
+aido launch --target claude    # Claude Code only
+aido launch --target opencode  # OpenCode only
 ```
 
-**Claude Code** — voegt toe aan `.bashrc` / `.zshrc`:
+**Claude Code** — adds to `.bashrc` / `.zshrc`:
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4141/anthropic"
 export ANTHROPIC_API_KEY="aido-proxy"
 ```
 
-**OpenCode** — schrijft `~/.config/opencode/opencode.json`:
+**OpenCode** — writes `~/.config/opencode/opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
@@ -172,11 +179,11 @@ export ANTHROPIC_API_KEY="aido-proxy"
 }
 ```
 
-In OpenCode: `/models` → kies `aido/big-pickle` of een ander model.
+In OpenCode: `/models` → select `aido/big-pickle` or another model.
 
 ### `aido status`
 
-Toont geconfigureerde providers en rate-limited keys.
+Shows configured providers and any rate-limited keys.
 
 ```bash
 aido status
@@ -191,23 +198,23 @@ aido status
 
 ---
 
-## Hoe rotatie werkt
+## How rotation works
 
-1. Volgende beschikbare (niet-gelimiteerde) key wordt gebruikt
-2. Bij `429` response: key gemarkeerd in SQLite + cooldown (default 1u, of `Retry-After` header)
-3. Request herproefd met volgende key (max 3x)
-4. Alle keys op → `503` teruggegeven aan de client
+1. The next available (non-rate-limited) key is used
+2. On a `429` response: key is marked in SQLite with a cooldown (default 1h, or from `Retry-After` header)
+3. Request is retried with the next key (up to 3 attempts)
+4. If all keys are exhausted → `503` returned to the client
 
 ---
 
-## Key-detectie formaten
+## Key format detection
 
-| Formaat              | Provider   |
+| Format               | Provider   |
 |----------------------|------------|
 | `sk-ant-...`         | Anthropic  |
 | `sk-proj-...`        | OpenAI     |
-| `sk-` + 60+ tekens   | Zen        |
-| `sk-` + korter       | OpenAI     |
+| `sk-` + 60+ chars    | Zen        |
+| `sk-` + shorter      | OpenAI     |
 | `gsk_...`            | Groq       |
 | `AIza...`            | Google     |
 
@@ -216,19 +223,18 @@ aido status
 ## Development
 
 ```bash
-npm test            # alle tests
+npm test            # run all tests
 npm run test:watch  # watch mode
 ```
 
 ---
 
-## Git repo
+## Git setup
 
 ```bash
-# Kloon of kopieer de bestanden
 git init
 git add .
 git commit -m "init"
 
-# .env en aido.db staan in .gitignore — die worden nooit gecommit
+# .env and aido.db are in .gitignore — never committed
 ```

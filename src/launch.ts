@@ -4,6 +4,29 @@ import os from 'os';
 
 const PROXY_BASE = 'http://localhost:4141';
 
+async function fetchLocalOllamaModels(): Promise<Record<string, { name: string }>> {
+  const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return fallbackLocalModels();
+    const json = await res.json() as { models?: Array<{ name: string }> };
+    const models = json.models ?? [];
+    if (models.length === 0) return fallbackLocalModels();
+    return Object.fromEntries(
+      models.map(m => [m.name, { name: m.name + ' (local)' }])
+    );
+  } catch {
+    return fallbackLocalModels();
+  }
+}
+
+function fallbackLocalModels(): Record<string, { name: string }> {
+  return {
+    'qwen3:8b': { name: 'Qwen3 8B (local)' },
+    'glm-4.7-flash': { name: 'GLM-4.7 Flash (local)' },
+  };
+}
+
 // ─── Claude Code ───────────────────────────────────────────────────────────────
 // Claude Code respects ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY env vars.
 // We write a shell snippet the user can source, and optionally patch .bashrc/.zshrc
@@ -54,7 +77,7 @@ const ZEN_FREE_MODELS: Record<string, string> = {
   'minimax-m2.5-free':   'MiniMax M2.5 (Free)',
 };
 
-function launchOpenCode(port: number): void {
+async function launchOpenCode(port: number): Promise<void> {
   const configDir = path.join(os.homedir(), '.config', 'opencode');
   const configPath = path.join(configDir, 'opencode.json');
 
@@ -109,6 +132,9 @@ function launchOpenCode(port: number): void {
     ),
   };
 
+  // Fetch local Ollama models dynamically
+  const localModels = await fetchLocalOllamaModels();
+
   // Ollama Cloud via aido proxy
   config.provider['aido-ollama'] = {
     npm: '@ai-sdk/openai-compatible',
@@ -132,10 +158,7 @@ function launchOpenCode(port: number): void {
       baseURL: `http://localhost:${port}/aido/local/v1`,
       apiKey: 'aido-proxy',
     },
-    models: {
-      'qwen3:8b':          { name: 'Qwen3 8B (local)' },
-      'glm-4.7-flash':     { name: 'GLM-4.7 Flash (local)' },
-    },
+    models: localModels,
   };
 
   // Set default model to auto if not already set
@@ -150,7 +173,7 @@ function launchOpenCode(port: number): void {
   console.log(`  aido-cloud  → Cloud (zen → groq → openai → anthropic)`);
   console.log(`  aido        → Zen (big-pickle, mimo-v2-flash-free, ...)`);
   console.log(`  aido-ollama → Ollama Cloud (glm-5:cloud, kimi-k2.5:cloud, ...)`);
-  console.log(`  aido-local  → Local Ollama (qwen3:8b, glm-4.7-flash, ...)`);
+  console.log(`  aido-local  → Local Ollama (${Object.keys(localModels).join(', ')})`);
   console.log(`\n  In OpenCode: /models → select aido-auto for fully automatic routing`);
   console.log(`  Note: aido-local models only work if downloaded via 'ollama pull <model>'`);
   console.log('  Restart OpenCode to apply changes.');
@@ -194,7 +217,7 @@ export interface LaunchOptions {
   target: 'all' | 'claude' | 'opencode';
 }
 
-export function launch(opts: LaunchOptions): void {
+export async function launch(opts: LaunchOptions): Promise<void> {
   const { port, target } = opts;
 
   console.log(`[launch] Configuring tools to use proxy at http://localhost:${port}`);
@@ -203,7 +226,7 @@ export function launch(opts: LaunchOptions): void {
     launchClaudeCode(port);
   }
   if (target === 'all' || target === 'opencode') {
-    launchOpenCode(port);
+    await launchOpenCode(port);
   }
   console.log('\n✓ Done. Start the proxy with: aido-proxy proxy');
 }

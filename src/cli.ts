@@ -62,7 +62,7 @@ program
   .action(async (providerArg: string | undefined, opts: { sync: boolean }) => {
     const providers: Provider[] = providerArg
       ? [providerArg as Provider]
-      : ['zen', 'openai', 'groq']; // providers with a /models endpoint
+      : ['zen', 'openai', 'groq', 'ollama', 'ollama-local']; // providers with a /models endpoint
 
     for (const provider of providers) {
       const keys = loadKeysForProvider(provider);
@@ -88,8 +88,8 @@ program
   .description('Configure Claude Code / OpenCode to use the proxy')
   .option('--port <port>', 'Proxy port', '4141')
   .option('--target <target>', 'Which tool to configure: all | claude | opencode', 'all')
-  .action((opts: { port: string; target: string }) => {
-    launch({
+  .action(async (opts: { port: string; target: string }) => {
+    await launch({
       port: parseInt(opts.port, 10),
       target: opts.target as 'all' | 'claude' | 'opencode',
     });
@@ -103,7 +103,7 @@ program
     clearExpiredLimits();
 
     // Show configured providers
-    const providers: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google'];
+    const providers: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local'];
     console.log('Configured providers:\n');
     for (const p of providers) {
       const keys = loadKeysForProvider(p);

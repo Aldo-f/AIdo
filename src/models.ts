@@ -7,8 +7,8 @@ export interface ModelInfo {
   free?: boolean; // true if input/output price is 0 (where known)
 }
 
-// Providers with a /models endpoint compatible with OpenAI format
-const MODELS_ENDPOINT_PROVIDERS: Provider[] = ['zen', 'openai', 'groq'];
+// Providers with a models listing endpoint
+const MODELS_ENDPOINT_PROVIDERS: Provider[] = ['zen', 'openai', 'groq', 'ollama', 'ollama-local'];
 
 // Cache TTL: 1 hour
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -66,7 +66,10 @@ export async function fetchModels(
   }
 
   const config = PROVIDER_CONFIGS[provider];
-  const url = `${config.baseUrl}/models`;
+  // Ollama Cloud: /api/tags — Local Ollama: /v1/models (OpenAI compat) — others: /models
+  const url = provider === 'ollama'
+    ? `${config.baseUrl}/tags`
+    : `${config.baseUrl}/models`;
 
   let res: Response;
   try {
@@ -81,8 +84,18 @@ export async function fetchModels(
     throw new Error(`${provider} /models returned ${res.status}`);
   }
 
-  const json = await res.json() as { data?: Array<{ id: string; owned_by?: string }> };
-  const models: ModelInfo[] = (json.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
+  const json = await res.json() as {
+    data?: Array<{ id: string; owned_by?: string }>;   // OpenAI format
+    models?: Array<{ name: string; model?: string }>;  // Ollama /api/tags format
+  };
+
+  let models: ModelInfo[];
+  if (json.models) {
+    // Ollama Cloud: {models: [{name: "gpt-oss:20b-cloud", ...}]}
+    models = json.models.map((m) => ({ id: m.name ?? m.model ?? '?' }));
+  } else {
+    models = (json.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
+  }
 
   setCache(provider, keyHint, models);
   return models;

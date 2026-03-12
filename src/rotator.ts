@@ -1,8 +1,14 @@
 import { isRateLimited, markRateLimited } from './db.js';
-import type { Provider } from './detector.js';
+import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 
 export function loadKeysForProvider(provider: Provider): string[] {
-  const raw = process.env[`${provider.toUpperCase()}_KEYS`] ?? '';
+  // ollama-local needs no key — return a single placeholder so the rotator works
+  if (PROVIDER_CONFIGS[provider]?.noAuth) {
+    return ['local'];
+  }
+  // OLLAMA-LOCAL → OLLAMA_LOCAL_KEYS (hyphen → underscore for env var name)
+  const envVar = `${provider.toUpperCase().replace(/-/g, '_')}_KEYS`;
+  const raw = process.env[envVar] ?? '';
   return raw
     .split(',')
     .map((k) => k.trim())

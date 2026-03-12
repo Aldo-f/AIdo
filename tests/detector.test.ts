@@ -28,6 +28,17 @@ describe('detectProvider', () => {
     expect(detectProvider('sk-abcdefghijklmnopqrstuvwxyz123456789012345678')).toBe('openai');
   });
 
+  it('detects Ollama Cloud keys (32 hex + . + alphanumeric)', () => {
+    expect(detectProvider('3f7240e1a93345f0b7f91315c3860be7.qhdTl48Vsx7imv_9p52tcAtO')).toBe('ollama');
+    expect(detectProvider('aabbccdd1122334455667788aabbccdd.someRandomSuffix')).toBe('ollama');
+  });
+
+  it('does not mis-detect non-Ollama keys as Ollama', () => {
+    expect(detectProvider('sk-ant-api03-abc123')).not.toBe('ollama');
+    expect(detectProvider('3f7240e1a93345f0b7f91315c3860be7')).toBeNull(); // no dot suffix
+    expect(detectProvider('notahexstring12345678901234567890.suffix')).toBeNull(); // not hex
+  });
+
   it('returns null for unknown keys', () => {
     expect(detectProvider('unknown-key-format')).toBeNull();
     expect(detectProvider('')).toBeNull();
