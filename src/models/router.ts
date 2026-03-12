@@ -23,6 +23,16 @@ const LOCAL_PRIORITY: Array<{ provider: Provider; model: string }> = [
 
 const LOCAL_CLOUD_MODELS = ['glm-5:cloud', 'kimi-k2.5:cloud', 'minimax-m2.5:cloud'];
 
+const CLOUD_ONLY_MODELS: Record<string, string> = {
+  'glm-5': 'glm-5:cloud',
+  'kimi-k2.5': 'kimi-k2.5:cloud',
+  'minimax-m2.5': 'minimax-m2.5:cloud',
+};
+
+function addCloudSuffix(model: string): string {
+  return CLOUD_ONLY_MODELS[model] ?? model;
+}
+
 export function routeAidoModel(pathname: string): RouteResult {
   const parsed = parseAidoModel(pathname);
   
@@ -78,9 +88,10 @@ export function routeAidoModel(pathname: string): RouteResult {
   }
   
   if (parsed.category === 'provider' && parsed.provider && parsed.model) {
+    const model = addCloudSuffix(parsed.model);
     return {
       provider: parsed.provider,
-      model: parsed.model,
+      model,
       upstreamPath: '/v1/chat/completions',
       isAuto: false,
     };

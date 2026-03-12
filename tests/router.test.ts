@@ -80,6 +80,12 @@ describe('routeAidoModel', () => {
       expect(result.isAuto).toBe(false);
     });
 
+    it('auto-adds :cloud suffix for known cloud models', () => {
+      const result = routeAidoModel('aido/zen/glm-5');
+      expect(result.provider).toBe('zen');
+      expect(result.model).toBe('glm-5:cloud');
+    });
+
     it('routes aido/openai/gpt-4o-mini to openai', () => {
       const result = routeAidoModel('aido/openai/gpt-4o-mini');
       expect(result.provider).toBe('openai');
