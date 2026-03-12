@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# aido — wrapper voor aido-proxy CLI
+# Installeer: npm run install:global   (systeembreed)
+#         of: npm run install:local    (alleen jouw user, geen sudo)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+exec node \
+  --experimental-sqlite \
+  --disable-warning=ExperimentalWarning \
+  --import "$SCRIPT_DIR/node_modules/tsx/dist/esm/index.cjs" \
+  "$SCRIPT_DIR/src/cli.ts" "$@"
