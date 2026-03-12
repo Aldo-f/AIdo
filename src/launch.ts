@@ -69,11 +69,39 @@ function launchOpenCode(port: number): void {
 
   config.$schema ??= 'https://opencode.ai/config.json';
   config.provider ??= {};
+
+  // aido/auto — meta-model, tries all providers in order automatically
+  config.provider['aido-auto'] = {
+    npm: '@ai-sdk/openai-compatible',
+    name: 'AIdo → Auto (all providers)',
+    options: {
+      baseURL: `http://localhost:${port}/aido/auto/v1`,
+      apiKey: 'aido-proxy',
+    },
+    models: {
+      'auto': { name: '⚡ Auto (best available)' },
+    },
+  };
+
+  // aido/cloud — all cloud providers (zen → groq → openai → anthropic)
+  config.provider['aido-cloud'] = {
+    npm: '@ai-sdk/openai-compatible',
+    name: 'AIdo → Cloud (all cloud providers)',
+    options: {
+      baseURL: `http://localhost:${port}/aido/cloud/v1`,
+      apiKey: 'aido-proxy',
+    },
+    models: {
+      'cloud': { name: '☁️ Cloud Auto' },
+    },
+  };
+
+  // Zen free tier via aido proxy
   config.provider['aido'] = {
     npm: '@ai-sdk/openai-compatible',
-    name: 'AIdo Proxy (Zen)',
+    name: 'AIdo → Zen (free)',
     options: {
-      baseURL: `http://localhost:${port}/v1`,
+      baseURL: `http://localhost:${port}/aido/zen/v1`,
       apiKey: 'aido-proxy',
     },
     models: Object.fromEntries(
@@ -81,18 +109,50 @@ function launchOpenCode(port: number): void {
     ),
   };
 
-  // Set default model if not already set
-  config.model ??= 'aido/big-pickle';
+  // Ollama Cloud via aido proxy
+  config.provider['aido-ollama'] = {
+    npm: '@ai-sdk/openai-compatible',
+    name: 'AIdo → Ollama Cloud',
+    options: {
+      baseURL: `http://localhost:${port}/aido/ollama/v1`,
+      apiKey: 'aido-proxy',
+    },
+    models: {
+      'glm-5:cloud':        { name: 'GLM-5 Cloud' },
+      'kimi-k2.5:cloud':    { name: 'Kimi K2.5 Cloud' },
+      'minimax-m2.5:cloud': { name: 'MiniMax M2.5 Cloud' },
+    },
+  };
+
+  // Local Ollama via aido proxy (no auth, locally downloaded models)
+  config.provider['aido-local'] = {
+    npm: '@ai-sdk/openai-compatible',
+    name: 'AIdo → Local Ollama',
+    options: {
+      baseURL: `http://localhost:${port}/aido/local/v1`,
+      apiKey: 'aido-proxy',
+    },
+    models: {
+      'qwen3:8b':          { name: 'Qwen3 8B (local)' },
+      'glm-4.7-flash':     { name: 'GLM-4.7 Flash (local)' },
+    },
+  };
+
+  // Set default model to auto if not already set
+  config.model ??= 'aido-auto/auto';
 
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   console.log('\n── OpenCode ──────────────────────────────────────────────');
   console.log(`✓ Wrote ${configPath}`);
-  console.log(`  provider: aido → http://localhost:${port}/v1`);
-  console.log(`  default model: aido/big-pickle`);
-  console.log(`  free models: ${Object.keys(ZEN_FREE_MODELS).join(', ')}`);
-  console.log('\n  In OpenCode: /models → select aido/...');
+  console.log(`  aido-auto    → Auto (tries all providers) ← default`);
+  console.log(`  aido-cloud  → Cloud (zen → groq → openai → anthropic)`);
+  console.log(`  aido        → Zen (big-pickle, mimo-v2-flash-free, ...)`);
+  console.log(`  aido-ollama → Ollama Cloud (glm-5:cloud, kimi-k2.5:cloud, ...)`);
+  console.log(`  aido-local  → Local Ollama (qwen3:8b, glm-4.7-flash, ...)`);
+  console.log(`\n  In OpenCode: /models → select aido-auto for fully automatic routing`);
+  console.log(`  Note: aido-local models only work if downloaded via 'ollama pull <model>'`);
   console.log('  Restart OpenCode to apply changes.');
 }
 
