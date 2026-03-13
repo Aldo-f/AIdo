@@ -6,7 +6,7 @@ import { addKeyToEnv } from './env.js';
 import { run } from './run.js';
 import { startProxy } from './proxy.js';
 import { launch } from './launch.js';
-import { getRateLimitedKeys, clearExpiredLimits } from './db.js';
+import { getRateLimitedKeys, clearExpiredLimits, clearAllLimits } from './db.js';
 import { showModels } from './models.js';
 import { loadKeysForProvider } from './rotator.js';
 
@@ -43,7 +43,7 @@ program
 program
   .command('run <prompt>')
   .description('Send a prompt to a model via the proxy')
-  .option('-p, --provider <provider>', 'Provider to use', 'zen')
+  .option('-p, --provider <provider>', 'Provider to use (default: auto with fallback)', 'auto')
   .option('-m, --model <model>', 'Model to use (defaults to free tier)')
   .option('-s, --stream', 'Stream the response', false)
   .action(async (prompt: string, opts: { provider: string; model?: string; stream: boolean }) => {
@@ -62,7 +62,7 @@ program
   .action(async (providerArg: string | undefined, opts: { sync: boolean }) => {
     const providers: Provider[] = providerArg
       ? [providerArg as Provider]
-      : ['zen', 'openai', 'groq', 'ollama', 'ollama-local']; // providers with a /models endpoint
+      : ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local'];
 
     for (const provider of providers) {
       const keys = loadKeysForProvider(provider);
@@ -123,6 +123,15 @@ program
       const until = new Date(limited_until).toLocaleTimeString();
       console.log(`  ${provider.padEnd(12)} ...${key.slice(-8)}  (until ${until})`);
     }
+  });
+
+// ─── clear ─────────────────────────────────────────────────────────────────
+program
+  .command('clear')
+  .description('Clear all rate limits (force all keys available)')
+  .action(() => {
+    const cleared = clearAllLimits();
+    console.log(`[clear] Cleared ${cleared} rate limit${cleared !== 1 ? 's' : ''}.`);
   });
 
 program.parse();

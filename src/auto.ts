@@ -1,18 +1,13 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
-import { logRequest } from './db.js';
+import { logRequest as dbLogRequest } from './db.js';
+import { logRequest as fileLogRequest } from './logger.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
+import { PRIORITIES } from './priorities.js';
 
-// Priority order for auto mode — free/unlimited first, paid last
-// A provider is skipped if it has no keys configured (or is unavailable)
-export const AUTO_PRIORITY: Array<{ provider: Provider; model: string }> = [
-  { provider: 'zen',          model: 'big-pickle'       },
-  { provider: 'ollama-local', model: 'qwen3:8b'         }, // no limits, offline
-  { provider: 'ollama',       model: 'glm-5:cloud'      },
-  { provider: 'groq',         model: 'llama3-8b-8192'   },
-  { provider: 'openai',       model: 'gpt-4o-mini'      },
-  { provider: 'anthropic',    model: 'claude-haiku-4-5' },
-];
+export const AUTO_PRIORITY = PRIORITIES.auto;
+
+export type PriorityType = 'auto' | 'cloud' | 'local';
 
 /** Non-retryable HTTP status codes */
 const FATAL_STATUSES = new Set([400, 401, 403, 404]);
@@ -29,28 +24,37 @@ export async function forwardAuto(
   openaiPath: string,
   method: string,
   body: string,
+  priorityType: PriorityType = 'auto',
 ): Promise<AutoResult> {
   const tried: string[] = [];
+  const priorities = priorityType === 'cloud' ? PRIORITIES.cloud 
+                  : priorityType === 'local' ? PRIORITIES.local 
+                  : AUTO_PRIORITY;
 
-  for (const { provider, model } of AUTO_PRIORITY) {
+  const overallStartTime = Date.now();
+  console.log(`[auto] Starting request (priority: ${priorityType})`);
+
+  for (const { provider, model } of priorities) {
+    const providerStartTime = Date.now();
     const rotator = getRotator(provider);
     const key = rotator.next();
 
-    // Skip if no keys available for this provider
     if (!key) {
       tried.push(`${provider}(no keys)`);
+      console.log(`[auto]   ${provider}: no keys available`);
       continue;
     }
 
+    console.log(`[auto]   ${provider}: trying ${model}...`);
     const config = PROVIDER_CONFIGS[provider];
     const isOllama = config.nativeFormat === true;
 
-    // Rewrite the model in the request body to the provider's preferred model
     let upstreamBody = body;
     try {
       const parsed = JSON.parse(body);
-      // Only override model if client sent "auto" or no model
-      if (!parsed.model || parsed.model === 'auto') {
+      if (priorityType === 'cloud' || priorityType === 'local') {
+        parsed.model = model;
+      } else if (!parsed.model || parsed.model === 'auto') {
         parsed.model = model;
       }
       upstreamBody = JSON.stringify(parsed);
@@ -58,8 +62,13 @@ export async function forwardAuto(
 
     if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
 
-    const upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
+    let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
+    // For ollama, baseUrl already ends with /api or /v1 - don't double-prefix
+    if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
+      upstreamPath = upstreamPath.replace(/^\/v1/, '').replace(/^\/api/, '');
+    }
     const url = `${config.baseUrl}${upstreamPath}`;
+    const startTime = Date.now();
 
     let res: Response;
     try {
@@ -78,7 +87,9 @@ export async function forwardAuto(
 
     const rawBody = await res.text();
     const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
-    logRequest(key, provider, res.status);
+    const duration = Date.now() - startTime;
+    dbLogRequest(key, provider, res.status);
+    fileLogRequest({ provider, model, key, status: res.status, duration, responseSize: rawBody.length });
 
     if (res.status === 429) {
       const retryAfter = res.headers.get('retry-after');
@@ -95,13 +106,16 @@ export async function forwardAuto(
     }
 
     // Success
-    console.log(`[auto] ✓ ${provider}/${model} (tried: ${tried.join(', ') || 'none'})`);
+    const totalTime = Date.now() - overallStartTime;
+    console.log(`[auto] ✓ ${provider}/${model} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
     const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
     res.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
 
     return { status: res.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: model };
   }
 
+  const totalTime = Date.now() - overallStartTime;
+  console.log(`[auto] All providers exhausted after ${totalTime}ms. Tried: ${tried.join(', ')}`);
   return {
     status: 503,
     body: JSON.stringify({

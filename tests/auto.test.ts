@@ -115,6 +115,13 @@ describe('forwardAuto', () => {
     delete process.env.ANTHROPIC_KEYS;
     delete process.env.GOOGLE_KEYS;
 
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      if (String(url).includes('localhost:11434')) {
+        return Promise.reject(new Error('ECONNREFUSED'));
+      }
+      return Promise.reject(new Error('No mock for URL'));
+    });
+
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
     expect(result.status).toBe(503);
     const body = JSON.parse(result.body);

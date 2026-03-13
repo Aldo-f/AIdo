@@ -62,7 +62,13 @@ export function clearExpiredLimits(): number {
   const result = db
     .prepare('DELETE FROM rate_limits WHERE limited_until <= ?')
     .run(Date.now());
-  return result.changes;
+  return Number(result.changes);
+}
+
+export function clearAllLimits(): number {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM rate_limits').run();
+  return Number(result.changes);
 }
 
 export function logRequest(key: string, provider: string, status: number): void {
