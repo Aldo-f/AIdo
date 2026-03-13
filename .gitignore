@@ -1,5 +1,6 @@
 node_modules/
 dist/
+logs/
 
 # Local data — never commit
 .env
@@ -7,6 +8,18 @@ aido.db
 aido.db-shm
 aido.db-wal
 
-# OS
+# Build outputs
+site/
+
+# Package managers
+bun.lock
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
+
+# Internal tooling
+.sisyphus/
