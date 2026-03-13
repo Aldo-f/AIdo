@@ -66,10 +66,13 @@ export async function fetchModels(
   }
 
   const config = PROVIDER_CONFIGS[provider];
-  // Ollama Cloud: /api/tags — Local Ollama: /v1/models (OpenAI compat) — others: /models
-  const url = provider === 'ollama'
-    ? `${config.baseUrl}/tags`
-    : `${config.baseUrl}/models`;
+  // Ollama Cloud: /api/tags — others: /models
+  let url: string;
+  if (provider === 'ollama') {
+    url = `${config.baseUrl}/tags`;
+  } else {
+    url = `${config.baseUrl}/models`;
+  }
 
   let res: Response;
   try {
@@ -85,14 +88,17 @@ export async function fetchModels(
   }
 
   const json = await res.json() as {
-    data?: Array<{ id: string; owned_by?: string }>;   // OpenAI format
-    models?: Array<{ name: string; model?: string }>;  // Ollama /api/tags format
+    data?: Array<{ id: string; owned_by?: string }>;
+    models?: Array<{ name: string; model?: string }>;
   };
 
   let models: ModelInfo[];
   if (json.models) {
-    // Ollama Cloud: {models: [{name: "gpt-oss:20b-cloud", ...}]}
-    models = json.models.map((m) => ({ id: m.name ?? m.model ?? '?' }));
+    // Google: {models: [{name: "models/gemini-1.5-pro", ...}]} or Ollama Cloud
+    models = json.models.map((m) => ({
+      id: m.name?.replace('models/', '') ?? m.model ?? '?',
+      owned_by: provider,
+    }));
   } else {
     models = (json.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
   }

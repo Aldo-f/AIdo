@@ -31,7 +31,7 @@ export const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
   google: {
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    authHeader: (key) => ({ Authorization: `Bearer ${key}` }),
+    authHeader: () => ({}),
   },
   // Ollama Cloud — uses /api/chat (not /v1/), proxy translates automatically
   ollama: {

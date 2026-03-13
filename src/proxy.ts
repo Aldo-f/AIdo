@@ -12,7 +12,9 @@ const DEFAULT_PROVIDER: Provider =
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
 const MAX_RETRIES = 3;
 
-export function resolveProvider(pathname: string, body?: string): { provider: Provider | 'auto'; upstreamPath: string; isAidoAuto?: boolean; model?: string } {
+import { type PriorityType } from './auto.js';
+
+export function resolveProvider(pathname: string, body?: string): { provider: Provider | 'auto'; upstreamPath: string; isAidoAuto?: boolean; model?: string; priorityType?: PriorityType } {
   // New format: route based on model name in request body
   // Path should be /v1/... or /aido/v1/...
   if (body) {
@@ -25,6 +27,7 @@ export function resolveProvider(pathname: string, body?: string): { provider: Pr
           upstreamPath: '/v1/chat/completions',
           isAidoAuto: route.isAuto,
           model: route.model,
+          priorityType: route.priorityType,
         };
       }
     } catch {
@@ -121,10 +124,10 @@ export function createProxyServer(): http.Server {
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const body = Buffer.concat(chunks).toString();
 
-    const { provider, upstreamPath, isAidoAuto } = resolveProvider(url.pathname + url.search, body);
+    const { provider, upstreamPath, isAidoAuto, priorityType } = resolveProvider(url.pathname + url.search, body);
 
     const result = provider === 'auto' || isAidoAuto
-      ? await forwardAuto(upstreamPath, req.method ?? 'GET', body)
+      ? await forwardAuto(upstreamPath, req.method ?? 'GET', body, priorityType ?? 'auto')
       : await forwardRequest(provider, upstreamPath, req.method ?? 'GET', req.headers as Record<string, string>, body);
 
     res.writeHead(result.status, result.headers);

@@ -1,20 +1,24 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
 import { logRequest } from './db.js';
+import { forwardAuto, type PriorityType } from './auto.js';
+import { routeAidoModel } from './models/router.js';
 
 export interface RunOptions {
-  provider: Provider;
+  provider: Provider | 'auto';
   model?: string;
   stream?: boolean;
 }
 
 // Default free models per provider
 const DEFAULT_MODELS: Record<Provider, string> = {
-  zen: 'big-pickle',             // Free on OpenCode Zen
+  zen: 'big-pickle',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-haiku-4-5-20251001',
-  groq: 'llama3-8b-8192',
+  groq: 'llama-3.1-8b-instant',
   google: 'gemini-1.5-flash',
+  ollama: 'llama3',
+  'ollama-local': 'qwen3:8b',
 };
 
 // All known free models on OpenCode Zen (from /zen/v1/models)
@@ -27,6 +31,37 @@ export const ZEN_FREE_MODELS = [
 
 export async function run(prompt: string, opts: RunOptions): Promise<void> {
   const { provider, model, stream = false } = opts;
+
+  if (provider === 'auto') {
+    const modelName = model ?? 'auto';
+    const route = routeAidoModel(modelName);
+    const priorityType: PriorityType = route.priorityType ?? 'auto';
+    
+    const body = JSON.stringify({
+      model: route.model,
+      stream,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const result = await forwardAuto('/v1/chat/completions', 'POST', body, priorityType);
+
+    if (result.status === 503) {
+      console.error(`[run] All providers exhausted: ${result.body}`);
+      process.exit(1);
+    }
+
+    if (result.status !== 200) {
+      console.error(`[run] Error ${result.status}: ${result.body}`);
+      process.exit(1);
+    }
+
+    const json = JSON.parse(result.body) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+    const content = json.choices?.[0]?.message?.content ?? '(no response)';
+    console.log(`[response] (${result.usedProvider}/${result.usedModel})\n${content}`);
+    return;
+  }
+
   const rotator = getRotator(provider);
   const key = rotator.next();
 
