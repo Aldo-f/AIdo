@@ -202,7 +202,7 @@ aido status
 
 1. The next available (non-rate-limited) key is used
 2. On a `429` response: key is marked in SQLite with a cooldown (default 1h, or from `Retry-After` header)
-3. Request is retried with the next key (up to 3 attempts)
+3. Request is retried with the next key (all available keys are tried)
 4. If all keys are exhausted → `503` returned to the client
 
 ---
