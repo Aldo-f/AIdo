@@ -7,11 +7,29 @@ import { forwardAuto } from './auto.js';
 import { routeAidoModel } from './models/router.js';
 import { isPortInUse } from './port-check.js';
 import { writePid, readPid, deletePid, isStale } from './daemon.js';
+import { mergeWithCapabilities } from './model-capabilities.js';
 
 const DEFAULT_PROVIDER: Provider =
   (process.env.DEFAULT_PROVIDER as Provider) ?? 'zen';
 
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
+
+function enrichModelsWithCapabilities(responseBody: string): string {
+  try {
+    const json = JSON.parse(responseBody);
+    const models = json.data ?? [];
+    if (Array.isArray(models) && models.length > 0) {
+      json.data = models.map((m: { id: string }) => ({
+        ...m,
+        capabilities: mergeWithCapabilities(m.id),
+      }));
+      return JSON.stringify(json);
+    }
+    return responseBody;
+  } catch {
+    return responseBody;
+  }
+}
 
 import { type PriorityType } from './auto.js';
 
@@ -106,7 +124,11 @@ async function forwardRequest(
       if (name !== 'content-type') responseHeaders[name] = value;
     });
 
-    return { status: res.status, body: responseBody, headers: responseHeaders };
+    const enrichedBody = path.includes('/v1/models') 
+      ? enrichModelsWithCapabilities(responseBody) 
+      : responseBody;
+
+    return { status: res.status, body: enrichedBody, headers: responseHeaders };
   } catch (err) {
     return {
       status: 502,

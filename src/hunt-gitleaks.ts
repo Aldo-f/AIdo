@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import 'dotenv/config';
-import { markSourceSearched, isSourceSearchedRecently } from '../db.js';
+import { markSourceSearched, isSourceSearchedRecently } from './db.js';
 
 const GITLEAKS_BIN = path.join(process.cwd(), 'bin', 'gitleaks');
 
