@@ -153,6 +153,29 @@ Routes:
 | `/openai/v1/...`     | OpenAI          |
 | `/anthropic/...`     | Anthropic       |
 
+#### Model Capabilities
+
+The `/v1/models` endpoint returns enriched model data with capabilities:
+
+```json
+{
+  "id": "claude-3-5-haiku",
+  "object": "model",
+  "owned_by": "opencode",
+  "capabilities": {
+    "context": 200000,
+    "input": 200000,
+    "output": 100000,
+    "allows": ["reasoning", "text", "image", "pdf"]
+  }
+}
+```
+
+- `context`: Maximum context window (tokens)
+- `input`: Maximum input tokens
+- `output`: Maximum output tokens
+- `allows`: Features supported (reasoning, text, image, pdf, video)
+
 ### `aido launch`
 
 Configures Claude Code and/or OpenCode to use the proxy.
@@ -210,6 +233,14 @@ Stops the running proxy server.
 
 ```bash
 aido stop
+```
+
+### `aido hunt:stop`
+
+Stops the running hunt daemon.
+
+```bash
+aido hunt:stop
 ```
 
 ### `aido hunt`

@@ -20,6 +20,10 @@ AIdo is a local proxy server that sits between your applications and LLM provide
 | `src/rotator.ts` | Key rotation logic |
 | `src/detector.ts` | Provider detection from key format |
 | `src/db.ts` | SQLite database for rate limit tracking |
+| `src/hunt.ts` | Hunt daemon - searches for leaked API keys |
+| `src/hunt-gitleaks.ts` | Gitleaks integration for repo scanning |
+| `src/model-capabilities.ts` | Model capabilities database |
+| `src/models.ts` | Model fetching and enrichment |
 
 ### Request Flow
 
@@ -104,3 +108,26 @@ aido/ollama/qwen3:8b   → Ollama Cloud, specific model
 | `OLLAMA_HOST` | Ollama host URL (default: http://localhost:11434) |
 | `PROXY_PORT` | Proxy port (default: 4141) |
 | `DB_PATH` | SQLite database path |
+
+## Model Capabilities
+
+The proxy enriches `/v1/models` responses with capability data:
+
+```json
+{
+  "id": "claude-3-5-haiku",
+  "capabilities": {
+    "context": 200000,
+    "input": 200000,
+    "output": 100000,
+    "allows": ["reasoning", "text", "image", "pdf"]
+  }
+}
+```
+
+- `context`: Maximum context window (tokens)
+- `input`: Maximum input tokens  
+- `output`: Maximum output tokens
+- `allows`: Supported features (reasoning, text, image, pdf, video)
+
+Capabilities are looked up from a hardcoded database in `src/model-capabilities.ts` since provider APIs don't always return this information.

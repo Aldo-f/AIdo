@@ -42,5 +42,8 @@ aido run "what is 2+2"
 - `aido proxy` - Start the proxy server
 - `aido launch` - Configure Claude Code/OpenCode to use the proxy
 - `aido status` - Show configured providers
+- `aido hunt` - Search for leaked API keys
+- `aido hunt:stop` - Stop the hunt daemon
+- `aido stop` - Stop the proxy server
 
 See [API Reference](api.md) for detailed command documentation.

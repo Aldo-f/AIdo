@@ -87,6 +87,34 @@ aido clear
 [clear] Cleared 4 rate limits.
 ```
 
+### aido stop
+
+Stop the running proxy server.
+
+```bash
+aido stop
+```
+
+### aido hunt
+
+Search for leaked API keys on the internet.
+
+```bash
+aido hunt                           # Run in daemon mode (default)
+aido hunt --daemon=false            # Run once and exit
+aido hunt --limit 5                 # Stop after 5 valid keys
+aido hunt --timeout 120             # Search for 2 minutes
+aido hunt --provider zen            # Only search for Zen keys
+```
+
+### aido hunt:stop
+
+Stop the running hunt daemon.
+
+```bash
+aido hunt:stop
+```
+
 ### aido models
 
 Fetches available models using your key. Results cached for 1 hour.
@@ -107,6 +135,40 @@ The proxy forwards requests to upstream providers:
 | `/zen/v1/...` | Zen |
 | `/openai/v1/...` | OpenAI |
 | `/anthropic/...` | Anthropic |
+
+### Model Capabilities
+
+The `/v1/models` endpoint returns enriched model data with capabilities:
+
+```bash
+curl http://localhost:4141/v1/models \
+  -H "Authorization: Bearer aido-proxy"
+```
+
+```json
+{
+  "data": [
+    {
+      "id": "claude-3-5-haiku",
+      "object": "model",
+      "owned_by": "opencode",
+      "capabilities": {
+        "context": 200000,
+        "input": 200000,
+        "output": 100000,
+        "allows": ["reasoning", "text", "image", "pdf"]
+      }
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `context` | Maximum context window (tokens) |
+| `input` | Maximum input tokens |
+| `output` | Maximum output tokens |
+| `allows` | Features: reasoning, text, image, pdf, video |
 
 ### Chat Completions
 
