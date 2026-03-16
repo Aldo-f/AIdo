@@ -172,11 +172,23 @@ export async function startProxy(): Promise<void> {
   if (await isPortInUse(PORT)) {
     const existing = readPid();
     if (existing && !isStale()) {
-      console.error(`[aido-proxy] Already running on port ${PORT} (PID: ${existing.pid})`);
+      console.error(`[aido-proxy] Error: Port ${PORT} is already in use by PID ${existing.pid}.`);
+      console.error(`           Is another aido-proxy instance running?`);
+      console.error(`           To stop it: kill ${existing.pid}`);
       process.exit(1);
+      return;
     }
     console.log(`[aido-proxy] Stale PID file found, removing...`);
     deletePid();
+    
+    if (await isPortInUse(PORT)) {
+      console.error(`[aido-proxy] Error: Port ${PORT} is in use by another process.`);
+      console.error(`           Please stop the existing service or use a different port.`);
+      console.error(`           Current port: ${PORT}`);
+      console.error(`           To change: set PROXY_PORT=4142 in .env`);
+      process.exit(1);
+      return;
+    }
   }
 
   const server = createProxyServer();
