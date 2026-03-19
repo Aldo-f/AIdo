@@ -49,30 +49,19 @@ program
   .option('-p, --provider <provider>', 'Provider to use (default: auto with fallback)', 'auto')
   .option('-m, --model <model>', 'Model to use (defaults to free tier)')
   .option('-s, --stream', 'Stream the response', false)
-  .option('--auto-free', 'Use free models first before falling back to paid', true)
-  .option('--no-auto-free', 'Use paid models first before falling back to free', false)
-  .action(async (prompt: string, opts: { provider: string; model?: string; stream: boolean; autoFree: boolean; noAutoFree: boolean }) => {
-    const useAutoFree = opts.autoFree && !opts.noAutoFree;
-    if (useAutoFree) {
-      // Import forwardAutoFree here to avoid circular dependency issues
-      const { forwardAutoFree } = await import('./auto.js');
-      await forwardAutoFree(
-        `/v1/chat/completions`,
-        'POST',
-        JSON.stringify({
-          model: opts.model || undefined,
-          messages: [{ role: 'user', content: prompt }],
-          stream: opts.stream
-        }),
-        'auto'
-      );
-    } else {
-      await run(prompt, {
-        provider: opts.provider as Provider,
-        model: opts.model,
-        stream: opts.stream,
-      });
-    }
+  .option('--only-free', 'Only use free models (skip paid models)')
+  .option('--only-paid', 'Only use paid models (skip free models)')
+  .action(async (prompt: string, opts: { provider: string; model?: string; stream: boolean; onlyFree: boolean; onlyPaid: boolean }) => {
+    let strategy: 'free' | 'paid' | 'both' = 'both';
+    if (opts.onlyFree) strategy = 'free';
+    if (opts.onlyPaid) strategy = 'paid';
+    
+    await run(prompt, {
+      provider: opts.provider as Provider,
+      model: opts.model,
+      stream: opts.stream,
+      strategy,
+    });
   });
 
 // ─── models ─────────────────────────────────────────────────────────────────

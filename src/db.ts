@@ -192,7 +192,7 @@ export function cleanOldSearchedSources(daysOld = 7): number {
     .run(cutoff);
   return Number(result.changes);
 }
-export interface FreeModel {
+export interface ModelInfo {
   id: string;
   name: string;
   provider: string;
@@ -201,7 +201,9 @@ export interface FreeModel {
   expiresAt: number;
 }
 
-export function saveModels(provider: string, models: FreeModel[]): void {
+export type FreeModel = ModelInfo;
+
+export function saveModels(provider: string, models: ModelInfo[]): void {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
@@ -219,7 +221,43 @@ export function saveModels(provider: string, models: FreeModel[]): void {
   }
 }
 
-export function getFreeModels(provider: string): FreeModel[] {
+export function getModel(provider: string, modelId: string): ModelInfo | null {
+  const db = getDb();
+  const now = Date.now();
+  const row = db
+    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND model_id = ? AND expires_at > ?')
+    .get(provider, modelId, now) as { provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number } | undefined;
+  
+  if (!row) return null;
+  
+  return {
+    id: row.model_id,
+    name: row.model_name,
+    provider: row.provider,
+    isFree: row.isFree === 1,
+    discoveredAt: row.discovered_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+export function getAllModels(provider: string): ModelInfo[] {
+  const db = getDb();
+  const now = Date.now();
+  const rows = db
+    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ?')
+    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number }>;
+  
+  return rows.map(row => ({
+    id: row.model_id,
+    name: row.model_name,
+    provider: row.provider,
+    isFree: row.isFree === 1,
+    discoveredAt: row.discovered_at,
+    expiresAt: row.expires_at,
+  }));
+}
+
+export function getFreeModels(provider: string): ModelInfo[] {
   const db = getDb();
   const now = Date.now();
   const rows = db

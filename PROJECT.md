@@ -39,31 +39,47 @@ User runs: aido run -m aido/zen/big-pickle "Hello"
    └─ prompt = "Hello"
 
 2. run() function executes:
-   ├─ Gets free models from DB for 'zen' provider
-   ├─ If model specified (-m flag), uses THAT model
-   ├─ If no model, uses first free model OR DEFAULT_MODELS[provider]
+   ├─ If model specified (-m flag):
+   │  ├─ Validates model exists in DB
+   │  └─ Uses THAT model directly
+   ├─ If no model:
+   │  ├─ Gets free models from DB for provider
+   │  ├─ Tries each free model until one succeeds
+   │  └─ Falls back to DEFAULT_MODELS[provider] if all fail
    ├─ Gets next available key from rotator
    ├─ Makes direct API call to provider
    └─ Returns response
 
 Key Points:
-- Runs ONCE per command
+- Runs ONCE per command (or until success)
 - Uses provider-specific key
 - Model selection is EXPLICIT when -m is used
+- Model VALIDATION: Checks if specified model exists in DB
+- FALLBACK: Tries multiple models if first fails (429, error, etc.)
 ```
 
-**⚠️ CRITICAL LOGIC CHECK**:
+**✅ MODEL VALIDATION**:
 ```typescript
-// In src/run.ts line 68-69:
-const freeModels = getFreeModels(provider);
-const selectedModel = model ?? (freeModels.length > 0 ? freeModels[0].id : DEFAULT_MODELS[provider]);
-
-// If user specifies -m aido/zen/minimax-m2.5-free:
-// model = "minimax-m2.5-free" (from model name parsing)
-// selectedModel = "minimax-m2.5-free" (NOT from freeModels array)
+// In src/run.ts lines 62-68:
+if (model) {
+  const modelInfo = getModel(provider, model);
+  if (!modelInfo) {
+    console.error(`[run] Model '${model}' not found for provider '${provider}'`);
+    console.error(`[run] Available models: ${getAllModels(provider).map(m => m.id).join(', ')}`);
+    process.exit(1);
+  }
+}
 ```
 
-**This is CORRECT** - the `-m` flag overrides the free model selection.
+**✅ FALLBACK LOGIC**:
+```typescript
+// In src/run.ts lines 78-156:
+for (const selectedModel of modelsToTry) {
+  // Try each model until one succeeds
+  // If 429 or error, continue to next model
+}
+if (all models fail) exit with error
+```
 
 ---
 
@@ -310,12 +326,13 @@ Processing in run.ts:
      └─ This tries multiple providers, not just one
 
   3. If provider is specific (e.g., 'zen'):
-     freeModels = getFreeModels('zen')
-     selectedModel = freeModels[0]?.id ?? DEFAULT_MODELS['zen']
-     // Uses first free model OR default
+     ├─ Gets all models for 'zen' from DB
+     ├─ Filters by strategy (free/paid/both)
+     ├─ Tries each model until one succeeds
+     └─ Falls back to DEFAULT_MODELS[provider] if all fail
 ```
 
-**⚠️ WATCH OUT**: If you specify `-p zen` without `-m`, it will use the first free model.
+**✅ CORRECT**: If you specify `-p zen` without `-m`, it will try free models first, then paid, until one succeeds.
 
 ---
 
@@ -348,20 +365,40 @@ Processing in auto.ts (forwardAuto):
 
 ## 7. POTENTIAL LOGIC MISTAKES TO WATCH FOR
 
-### 7.1 Model Selection Mistakes
+### 7.1 Model Selection & Validation
 
-| Scenario | Expected Behavior | Potential Bug |
-|----------|-------------------|---------------|
-| `aido run -m aido/zen/model "hi"` | Uses `model` directly | ❌ If code uses freeModels[0] instead |
-| `aido run -p zen -m model "hi"` | Uses `model` directly | ❌ Same issue |
-| `aido run -p zen "hi"` | Uses first free model | ✅ Correct |
-| `aido run "hi"` | Uses auto-routing | ✅ Correct (triggers forwardAuto) |
+| Scenario | Expected Behavior | Implementation |
+|----------|-------------------|----------------|
+| `aido run -m aido/zen/model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `aido run -p zen -m model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `aido run -p zen "hi"` | Tries free models, then paid, until success | ✅ Fallback loop in run() |
+| `aido run "hi"` | Uses auto-routing across providers | ✅ forwardAuto() |
 
-**Check in src/run.ts line 68-69**:
+**Model Validation** (src/run.ts lines 62-68):
 ```typescript
-const selectedModel = model ?? (freeModels.length > 0 ? freeModels[0].id : DEFAULT_MODELS[provider]);
+if (model) {
+  const modelInfo = getModel(provider, model);
+  if (!modelInfo) {
+    console.error(`[run] Model '${model}' not found for provider '${provider}'`);
+    console.error(`[run] Available models: ${getAllModels(provider).map(m => m.id).join(', ')}`);
+    process.exit(1);
+  }
+}
 ```
-✅ `??` operator means: use `model` if it exists, otherwise use freeModels[0]
+
+**Fallback Logic** (src/run.ts lines 78-156):
+```typescript
+for (const selectedModel of modelsToTry) {
+  // Try each model until one succeeds
+  // If 429 or error, continue to next model
+}
+if (all models fail) exit with error
+```
+
+**Strategy Options** (src/run.ts line 60):
+- `--only-free`: Only try free models
+- `--only-paid`: Only try paid models
+- Default (no flag): Try free first, then paid (both)
 
 ### 7.2 Provider Detection Mistakes
 
@@ -395,18 +432,24 @@ case 'openrouter':
   return m.id.endsWith(':free');
 ```
 
-### 7.4 Rate Limiting Mistakes
+### 7.4 Rate Limiting
 
-| Scenario | Expected | Potential Bug |
-|----------|----------|---------------|
-| Key gets 429 response | Key marked in rate_limits | ❌ If not marked |
-| Model gets 429 response | Model marked in model_limits | ❌ If not marked |
-| After 1 hour cooldown | Key/model available again | ❌ If cleanup doesn't run |
+| Scenario | Expected | Implementation |
+|----------|----------|----------------|
+| Key gets 429 response | Key marked in rate_limits | ✅ markRateLimited() |
+| Model gets 429 response | Model marked in model_limits | ✅ markModelRateLimited() |
+| After 1 hour cooldown | Key/model available again | ✅ Automatic (timestamp check) |
+
+**No Cleanup Needed**: Rate limits expire automatically when `limited_until > Date.now()` is false.
+The `isRateLimited()` function checks the timestamp, no background cleanup required.
 
 **Check in src/db.ts**:
 ```typescript
 export function markRateLimited(key: string, provider: string, cooldownSeconds: number)
 export function markModelRateLimited(provider: string, modelId: string, cooldownSeconds: number)
+export function isRateLimited(key: string): boolean {
+  // Returns false when limited_until <= Date.now()
+}
 ```
 
 ---
@@ -418,9 +461,10 @@ export function markModelRateLimited(provider: string, modelId: string, cooldown
 ```bash
 # Direct execution (one-time)
 aido run "Hello"                    # Auto-route to best provider
-aido run -m aido/zen/big-pickle "Hello"  # Specific model
-aido run -p zen "Hello"             # Specific provider, auto-select model
-aido run --auto-free "Hello"        # Try free models across all providers
+aido run -m aido/zen/big-pickle "Hello"  # Specific model (validated)
+aido run -p zen "Hello"             # Specific provider, tries free then paid
+aido run -p zen --only-free "Hello" # Only try free models
+aido run -p zen --only-paid "Hello" # Only try paid models
 
 # Proxy server (continuous)
 aido proxy                          # Start proxy on port 4141
@@ -671,8 +715,14 @@ Tables:
 
 When reviewing code, check these potential issues:
 
+- [ ] **Model validation**: Does `-m` flag validate model exists?
+  - Check: src/run.ts lines 62-68 - getModel() check before use
+
 - [ ] **Model selection**: Does `-m` flag override free model selection?
   - Check: src/run.ts line 69 uses `??` operator correctly
+
+- [ ] **Fallback logic**: Does it try multiple models on failure?
+  - Check: src/run.ts lines 78-156 - for loop with continue on error
 
 - [ ] **Provider detection**: Does router parse model names correctly?
   - Check: src/models/router.ts handles all formats
@@ -692,8 +742,8 @@ When reviewing code, check these potential issues:
 - [ ] **Auto-routing**: Does forwardAuto try multiple providers?
   - Check: src/auto.ts loops through providers
 
-- [ ] **Free model fallback**: Does it fall back to paid models?
-  - Check: src/auto.ts forwardAutoFree() fallback logic
+- [ ] **Strategy flags**: Are --only-free and --only-paid clear?
+  - Check: src/cli.ts lines 49-64 - strategy option handling
 
 ---
 
@@ -701,11 +751,15 @@ When reviewing code, check these potential issues:
 
 | Question | File | Line/Function |
 |----------|------|---------------|
-| How is model selected with -m flag? | src/run.ts | line 69 |
+| How is model validated with -m flag? | src/run.ts | lines 62-68 - getModel() |
+| How is model selected with -m flag? | src/run.ts | line 69 - `model ?? ...` |
+| How does fallback logic work? | src/run.ts | lines 78-156 - for loop |
 | How does auto-routing work? | src/auto.ts | forwardAuto() |
 | How are free models identified? | src/free-discovery.ts | identifyFreeModels() |
 | How are models saved to DB? | src/db.ts | saveModels() |
 | How are free models retrieved? | src/db.ts | getFreeModels() |
+| How to get a specific model? | src/db.ts | getModel(provider, modelId) |
+| How to get all models? | src/db.ts | getAllModels(provider) |
 | How does key rotation work? | src/rotator.ts | KeyRotator class |
 | How is model name parsed? | src/models/router.ts | parseAidoModel() |
 | How is proxy request handled? | src/proxy.ts | startProxy() |
