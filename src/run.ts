@@ -1,6 +1,6 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
-import { logRequest } from './db.js';
+import { logRequest, getFreeModels } from './db.js';
 import { forwardAuto, type PriorityType } from './auto.js';
 import { routeAidoModel } from './models/router.js';
 
@@ -10,7 +10,6 @@ export interface RunOptions {
   stream?: boolean;
 }
 
-// Default free models per provider
 const DEFAULT_MODELS: Record<Provider, string> = {
   zen: 'big-pickle',
   openai: 'gpt-4o-mini',
@@ -19,6 +18,7 @@ const DEFAULT_MODELS: Record<Provider, string> = {
   google: 'gemini-1.5-flash',
   ollama: 'llama3',
   'ollama-local': 'qwen3:8b',
+  openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
 };
 
 // All known free models on OpenCode Zen (from /zen/v1/models)
@@ -72,7 +72,9 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
 
   const config = PROVIDER_CONFIGS[provider];
   const url = `${config.baseUrl}/chat/completions`;
-  const selectedModel = model ?? DEFAULT_MODELS[provider];
+  
+  const freeModels = getFreeModels(provider);
+  const selectedModel = model ?? (freeModels.length > 0 ? freeModels[0].id : DEFAULT_MODELS[provider]);
 
   console.log(`[run] Provider: ${provider} | Model: ${selectedModel} | Key: ...${key.slice(-8)}`);
   console.log(`[run] Prompt: "${prompt}"\n`);
