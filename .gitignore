@@ -25,3 +25,15 @@ Thumbs.db
 
 # Internal tooling
 .sisyphus/
+
+# Test artifacts
+.env.test
+analytics.db
+prompts.db
+populate_cache.mjs
+server_output.txt
+test-analytics.js
+test-env.cjs
+test-env.js
+test.ts
+test_fetch.mjs
