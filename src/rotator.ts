@@ -1,4 +1,9 @@
-import { isRateLimited, markRateLimited } from './db.js';
+import {
+  isModelRateLimited,
+  isRateLimited,
+  markModelRateLimited,
+  markRateLimited,
+} from './db.js';
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 
 export function loadKeysForProvider(provider: Provider): string[] {
@@ -17,46 +22,93 @@ export function loadKeysForProvider(provider: Provider): string[] {
 
 export class KeyRotator {
   private keys: string[];
-  private index = 0;
+  private models: string[];
+  private keyIndex = 0;
+  private modelIndex = 0;
 
   constructor(
     readonly provider: Provider,
-    keys?: string[], // injectable for testing
+    keys?: string[],
+    models?: string[],
   ) {
     this.keys = keys ?? loadKeysForProvider(provider);
+    this.models = models ?? [];
   }
 
   get count(): number {
     return this.keys.length;
   }
 
-  /** Returns next non-rate-limited key, or null if all are limited */
   next(): string | null {
     if (this.keys.length === 0) return null;
 
-    const start = this.index;
+    const start = this.keyIndex;
     do {
-      const key = this.keys[this.index];
-      this.index = (this.index + 1) % this.keys.length;
+      const key = this.keys[this.keyIndex];
+      this.keyIndex = (this.keyIndex + 1) % this.keys.length;
       if (!isRateLimited(key)) return key;
-    } while (this.index !== start);
+    } while (this.keyIndex !== start);
 
-    return null; // all keys exhausted
+    return null;
   }
 
-  /** Mark a key as rate limited with optional cooldown (default 1h) */
   markLimited(key: string, cooldownSeconds = 3600): void {
     markRateLimited(key, this.provider, cooldownSeconds);
   }
 
-  /** All keys including limited ones */
   allKeys(): string[] {
     return [...this.keys];
   }
 
-  /** Only available (non-limited) keys */
   availableKeys(): string[] {
     return this.keys.filter((k) => !isRateLimited(k));
+  }
+
+  hasModels(): boolean {
+    return this.models.length > 0;
+  }
+
+  getNextModel(): { key: string; model: string } | null {
+    if (this.models.length === 0) {
+      const key = this.next();
+      if (!key) return null;
+      return { key, model: '' };
+    }
+
+    if (this.keys.length === 0) return null;
+
+    const startModel = this.modelIndex;
+    const startKey = this.keyIndex;
+
+    do {
+      const model = this.models[this.modelIndex];
+      const key = this.keys[this.keyIndex];
+
+      const modelLimited = isModelRateLimited(this.provider, model);
+      const keyLimited = isRateLimited(key);
+
+      if (!modelLimited && !keyLimited) {
+        const result = { key, model };
+        this.keyIndex = (this.keyIndex + 1) % this.keys.length;
+        this.modelIndex = (this.modelIndex + 1) % this.models.length;
+        return result;
+      }
+
+      if (modelLimited && !keyLimited) {
+        this.modelIndex = (this.modelIndex + 1) % this.models.length;
+      } else if (!modelLimited && keyLimited) {
+        this.keyIndex = (this.keyIndex + 1) % this.keys.length;
+      } else {
+        this.keyIndex = (this.keyIndex + 1) % this.keys.length;
+        this.modelIndex = (this.modelIndex + 1) % this.models.length;
+      }
+    } while (this.modelIndex !== startModel || this.keyIndex !== startKey);
+
+    return null;
+  }
+
+  markModelLimited(model: string, cooldownSeconds = 3600): void {
+    markModelRateLimited(this.provider, model, cooldownSeconds);
   }
 }
 
