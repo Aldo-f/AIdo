@@ -28,6 +28,79 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
   if (provider === 'auto') {
     const modelName = model ?? 'auto';
     const route = routeAidoModel(modelName);
+    
+    if (route.provider !== 'auto') {
+      const specificProvider = route.provider as Provider;
+      const rotator = getRotator(specificProvider);
+      const key = rotator.next();
+      
+      if (!key) {
+        console.error(`[run] No available API keys for provider: ${specificProvider}`);
+        process.exit(1);
+      }
+      
+      const config = PROVIDER_CONFIGS[specificProvider];
+      const url = `${config.baseUrl}/chat/completions`;
+      
+      const body = JSON.stringify({
+        model: route.model,
+        stream,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...config.authHeader(key),
+        },
+        body,
+      });
+      
+      logRequest(key, specificProvider, res.status);
+      
+      if (res.status === 429) {
+        rotator.markLimited(key);
+        console.error(`[run] Rate limited. Key ...${key.slice(-8)} marked. Try again.`);
+        process.exit(1);
+      }
+      
+      if (!res.ok) {
+        const err = await res.text();
+        console.error(`[run] Error ${res.status}: ${err}`);
+        process.exit(1);
+      }
+      
+      if (stream) {
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        if (!reader) return;
+        
+        process.stdout.write('[response] ');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+            try {
+              const json = JSON.parse(line.slice(6));
+              const delta = json.choices?.[0]?.delta?.content ?? '';
+              process.stdout.write(delta);
+            } catch {}
+          }
+        }
+        console.log();
+      } else {
+        const json = await res.json() as {
+          choices: Array<{ message: { content: string } }>;
+        };
+        const content = json.choices?.[0]?.message?.content ?? '(no response)';
+        console.log(`[response] (${specificProvider}/${route.model})\n${content}`);
+      }
+      return;
+    }
+    
     const priorityType: PriorityType = route.priorityType ?? 'auto';
     
     const body = JSON.stringify({
