@@ -487,6 +487,8 @@ aido hunt:stop                      # Stop hunt daemon
 
 ### 8.2 Model Name Formats
 
+**⚠️ CRITICAL**: Model names MUST start with `aido/` prefix!
+
 | Format | Provider | Example |
 |--------|----------|---------|
 | `aido/zen/<model>` | Zen | `aido/zen/big-pickle` |
@@ -497,9 +499,17 @@ aido hunt:stop                      # Stop hunt daemon
 | `aido/ollama/<model>` | Ollama Cloud | `aido/ollama/llama3` |
 | `aido/ollama-local/<model>` | Ollama Local | `aido/ollama-local/qwen3:8b` |
 | `aido/openrouter/<model>` | OpenRouter | `aido/openrouter/nvidia/nemotron-3-super-120b-a12b:free` |
-| `aido/auto` | Auto-route | Tries all providers |
-| `aido/cloud` | Cloud auto | Tries cloud providers |
-| `aido/local` | Local auto | Tries local Ollama |
+| `aido/auto/<model>` | Auto-route | Check all providers for model |
+| `aido/cloud/<model>` | Cloud auto | Check cloud providers for model |
+| `aido/local/<model>` | Local auto | Check local Ollama for model |
+
+### 8.3 Common Mistakes
+
+| Command | Result |
+|---------|--------|
+| `aido run -m minimax-m2.5-free "hi"` | ❌ ERROR: Unknown category/provider |
+| `aido run -m aido/zen/minimax-m2.5-free "hi"` | ✅ Uses Zen provider with that model |
+| `aido run -m aido/auto/minimax-m2.5-free "hi"` | ✅ Checks ALL providers for that model |
 
 ---
 
