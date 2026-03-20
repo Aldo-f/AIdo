@@ -48,6 +48,7 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
         messages: [{ role: 'user', content: prompt }],
       });
       
+      const startTime = Date.now();
       const res = await fetch(url, {
         method: 'POST',
         headers: {
@@ -57,7 +58,8 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
         body,
       });
       
-      logRequest(key, specificProvider, res.status);
+      const latencyMs = Date.now() - startTime;
+      logRequest(key, specificProvider, res.status, route.model, 'run', latencyMs);
       
       if (res.status === 429) {
         rotator.markLimited(key);
@@ -178,6 +180,7 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
     });
 
     let res: Response;
+    const startTime = Date.now();
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -194,9 +197,10 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
       lastError = new Error(msg);
       continue;
     }
-
-    logRequest(key, provider, res.status);
-
+    
+    const latencyMs = Date.now() - startTime;
+    logRequest(key, provider, res.status, selectedModel, 'run', latencyMs);
+    
     if (res.status === 429) {
       rotator.markLimited(key);
       console.log(`[run] Rate limited. Key ...${key.slice(-8)} marked. Trying next model...`);
