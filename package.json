@@ -14,7 +14,7 @@
     "uninstall:systemd": "systemctl --user stop aido || true && rm -f ~/.config/systemd/user/aido.service && systemctl --user daemon-reload",
     "test": "node --experimental-sqlite node_modules/.bin/vitest run",
     "test:watch": "node --experimental-sqlite node_modules/.bin/vitest",
-    "analytics": "tsx src/analytics/server.ts"
+    "analytics": "tsx src/cli.ts analytics"
   },
   "dependencies": {
     "commander": "^12.1.0",
