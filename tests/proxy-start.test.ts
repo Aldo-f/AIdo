@@ -12,12 +12,16 @@ vi.mock('../src/port-check.js', () => ({
 describe('startProxy - port conflict handling', () => {
   const PID_FILE = path.join(process.cwd(), '.aido.pid');
 
-  beforeEach(() => {
+beforeEach(() => {
+  try {
     if (fs.existsSync(PID_FILE)) {
       fs.unlinkSync(PID_FILE);
     }
-    mockIsPortInUse.mockReset();
-  });
+  } catch (err) {
+    // Ignore errors during cleanup
+  }
+  mockIsPortInUse.mockReset();
+});
 
   afterEach(() => {
     if (fs.existsSync(PID_FILE)) {

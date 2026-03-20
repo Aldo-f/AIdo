@@ -171,18 +171,14 @@ export async function fetchModels(
 }
 
 export async function showModels(provider: Provider, key: string, force: boolean): Promise<void> {
-  console.log(`\nFetching models for ${provider} (key: ...${key.slice(-8)})${force ? ' [force sync]' : ''}...\n`);
-
   let models: ModelInfo[];
   try {
     models = await fetchModels(provider, key, force);
   } catch (err) {
-    console.error(`✗ ${(err as Error).message}`);
     return;
   }
 
   if (models.length === 0) {
-    console.log('  (no models returned)');
     return;
   }
 
@@ -195,10 +191,32 @@ export async function showModels(provider: Provider, key: string, force: boolean
   }
 
   for (const [group, ids] of groups) {
-    console.log(`  [${group}]`);
-    for (const id of ids) console.log(`    ${id}`);
+    try {
+      console.log(`  [${group}]`);
+      for (const id of ids) {
+        console.log(`    ${id}`);
+      }
+    } catch (err) {
+      // Ignore EPIPE errors when piping to head/tail/etc
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'EPIPE') {
+        // Exit gracefully when consumer closes the pipe
+        return;
+      }
+      // Re-throw non-EPIPE errors
+      throw err;
+    }
   }
 
-  console.log(`\n  ${models.length} models total`);
-  console.log('  (cached for 1h — use --sync to refresh)\n');
+  try {
+    console.log(`\n  ${models.length} models total`);
+    console.log('  (cached for 1h — use --sync to refresh)\n');
+   } catch (err) {
+     // Ignore EPIPE errors when piping to head/tail/etc
+     if (err && typeof err === 'object' && 'code' in err && err.code === 'EPIPE') {
+       // Exit gracefully when consumer closes the pipe
+       return;
+     }
+     // Re-throw non-EPIPE errors
+     throw err;
+   }
 }

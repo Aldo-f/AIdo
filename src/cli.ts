@@ -13,6 +13,16 @@ import { readPid, deletePid, isStale } from './daemon.js';
 import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
 import { forwardAutoFree } from './auto.js';
 
+// Gracefully handle broken pipes (e.g., piping to head, grep, etc.)
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Exit gracefully when consumer closes the pipe
+    process.exit(0);
+  }
+  // Re-throw other errors
+  throw err;
+});
+
 const program = new Command();
 
 program
