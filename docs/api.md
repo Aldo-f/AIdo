@@ -2,66 +2,66 @@
 
 ## CLI Commands
 
-### aido add
+### AIdo add
 
 Adds an API key. Provider is auto-detected from key format.
 
 ```bash
-aido add <key>                    # Auto-detect provider
-aido add <key> --provider <name>  # Override provider
+AIdo add <key>                    # Auto-detect provider
+AIdo add <key> --provider <name>  # Override provider
 ```
 
 **Examples:**
 ```bash
-aido add sk-zen-key...
-aido add sk-ant-anthropic-key...
-aido add gsk_groq-key...
-aido add sk-proj-openai-key...
+AIdo add sk-zen-key...
+AIdo add sk-ant-anthropic-key...
+AIdo add gsk_groq-key...
+AIdo add sk-proj-openai-key...
 ```
 
-### aido run
+### AIdo run
 
 Sends a prompt to a model. Useful for quick testing.
 
 ```bash
-aido run "<prompt>"              # Use default model
-aido run "<prompt>" --model <model>
-aido run "<prompt>" --provider <provider>
-aido run "<prompt>" --stream     # Stream response
+AIdo run "<prompt>"              # Use default model
+AIdo run "<prompt>" --model <model>
+AIdo run "<prompt>" --provider <provider>
+AIdo run "<prompt>" --stream     # Stream response
 ```
 
 **Examples:**
 ```bash
-aido run "what is 2+2"
-aido run "write a haiku" --model mimo-v2-flash-free
-aido run "explain recursion" --provider zen --stream
+AIdo run "what is 2+2"
+AIdo run "write a haiku" --model mimo-v2-flash-free
+AIdo run "explain recursion" --provider zen --stream
 ```
 
-### aido proxy
+### AIdo proxy
 
 Starts the proxy server on port 4141 (configurable via `PROXY_PORT`).
 
 ```bash
-aido proxy              # Default port 4141
-aido proxy --port 8080  # Custom port
+AIdo proxy              # Default port 4141
+AIdo proxy --port 8080  # Custom port
 ```
 
-### aido launch
+### AIdo launch
 
 Configures Claude Code and/or OpenCode to use the proxy.
 
 ```bash
-aido launch                 # Both Claude Code and OpenCode
-aido launch --target claude    # Claude Code only
-aido launch --target opencode  # OpenCode only
+AIdo launch                 # Both Claude Code and OpenCode
+AIdo launch --target claude    # Claude Code only
+AIdo launch --target opencode  # OpenCode only
 ```
 
-### aido status
+### AIdo status
 
 Shows configured providers and any rate-limited keys.
 
 ```bash
-aido status
+AIdo status
 ```
 
 **Output:**
@@ -74,12 +74,12 @@ Rate-limited keys (1):
   zen          ...gooTF  (until 14:30:00)
 ```
 
-### aido clear
+### AIdo clear
 
 Clear all rate limits (force all keys available again).
 
 ```bash
-aido clear
+AIdo clear
 ```
 
 **Output:**
@@ -87,42 +87,63 @@ aido clear
 [clear] Cleared 4 rate limits.
 ```
 
-### aido stop
+### AIdo sync
+
+Clear rate limits and refresh models from all providers.
+
+```bash
+AIdo sync
+```
+
+**Output:**
+```
+[sync] Cleared 4 key limits and 3 model limits.
+[sync] Refreshing models from all providers...
+
+  [opencode]
+    minimax-m2.5-free [free]
+    mimo-v2-pro-free [free]
+    big-pickle [free]
+    ...
+  41 models total (7 free, 34 paid)
+```
+
+### AIdo stop
 
 Stop the running proxy server.
 
 ```bash
-aido stop
+AIdo stop
 ```
 
-### aido hunt
+### AIdo hunt
 
 Search for leaked API keys on the internet.
 
 ```bash
-aido hunt                           # Run in daemon mode (default)
-aido hunt --daemon=false            # Run once and exit
-aido hunt --limit 5                 # Stop after 5 valid keys
-aido hunt --timeout 120             # Search for 2 minutes
-aido hunt --provider zen            # Only search for Zen keys
+AIdo hunt                           # Run in daemon mode (default)
+AIdo hunt --daemon=false            # Run once and exit
+AIdo hunt --limit 5                 # Stop after 5 valid keys
+AIdo hunt --timeout 120             # Search for 2 minutes
+AIdo hunt --provider zen            # Only search for Zen keys
 ```
 
-### aido hunt:stop
+### AIdo hunt:stop
 
 Stop the running hunt daemon.
 
 ```bash
-aido hunt:stop
+AIdo hunt:stop
 ```
 
-### aido models
+### AIdo models
 
 Fetches available models using your key. Results cached for 1 hour.
 
 ```bash
-aido models              # All configured providers
-aido models zen          # Specific provider
-aido models --sync       # Ignore cache, force refresh
+AIdo models              # All configured providers
+AIdo models zen          # Specific provider
+AIdo models --sync       # Ignore cache, force refresh
 ```
 
 ## Proxy API Endpoints

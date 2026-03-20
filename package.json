@@ -1,14 +1,15 @@
 {
-  "name": "aido-proxy",
+  "name": "aido",
   "version": "2.1.1",
   "description": "Local API key rotation proxy for LLM providers",
   "type": "module",
   "bin": {
-    "aido": "./aido"
+    "aido": "./aido",
+    "AIdo": "./aido"
   },
   "scripts": {
-    "install:global": "chmod +x aido && sudo cp aido /usr/local/bin/aido",
-    "install:local": "chmod +x aido && mkdir -p ~/.local/bin && ln -sf $(pwd)/aido ~/.local/bin/aido",
+    "install:global": "chmod +x aido && sudo cp aido /usr/local/bin/aido && sudo ln -sf aido /usr/local/bin/AIdo",
+    "install:local": "chmod +x aido && mkdir -p ~/.local/bin && ln -sf $(pwd)/aido ~/.local/bin/aido && ln -sf $(pwd)/aido ~/.local/bin/AIdo",
     "install:systemd": "chmod +x aido && mkdir -p ~/.config/systemd/user && AIDO_PATH=\"$(pwd)\" USER=\"$(whoami)\" sh -c 'sed -e \"s|{AIDO_PATH}|${AIDO_PATH}|g\" -e \"s|{USER}|${USER}|g\" contrib/aido.service.template > ~/.config/systemd/user/aido.service' && systemctl --user daemon-reload",
     "uninstall:systemd": "systemctl --user stop aido || true && rm -f ~/.config/systemd/user/aido.service && systemctl --user daemon-reload",
     "test": "node --experimental-sqlite node_modules/.bin/vitest run",

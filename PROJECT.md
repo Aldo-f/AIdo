@@ -1,6 +1,8 @@
 # AIdo Project Architecture
 
-**Purpose**: Local API key rotation proxy for LLM providers with automatic free model discovery.
+**Purpose:** AIdo is a local API key rotation proxy for LLM providers with automatic free model discovery.
+
+> **AIdo** = **AI** + **Aldo** — Aldo's personal AI helper for managing API keys and model routing.
 
 ---
 
@@ -10,7 +12,7 @@
 aido/
 ├── src/
 │   ├── cli.ts              # Entry point - parses commands and routes to handlers
-│   ├── run.ts              # Direct CLI execution (aido run command)
+│   ├── run.ts              # Direct CLI execution (AIdo run command)
 │   ├── proxy.ts            # HTTP proxy server (aido proxy command)
 │   ├── auto.ts             # Auto-routing logic (forwardAuto, forwardAutoFree)
 │   ├── rotator.ts          # Key rotation with model-specific rate limiting
@@ -26,12 +28,12 @@ aido/
 
 ## 2. TWO WAYS TO USE AIDO
 
-### 2.1 Direct CLI Execution (`aido run`)
+### 2.1 Direct CLI Execution (`AIdo run`)
 
-**Flow**: `CLI → run() → API call → Response`
+**Flow:** `CLI → run() → API call → Response`
 
 ```
-User runs: aido run -m aido/zen/big-pickle "Hello"
+User runs: AIdo run -m aido/zen/big-pickle "Hello"
 
 1. cli.ts parses arguments
    ├─ provider = 'zen' (from model name)
@@ -117,9 +119,9 @@ Key Points:
 
 ---
 
-## 3. KEY DIFFERENCES: aido run vs proxy
+## 3. KEY DIFFERENCES: AIdo run vs proxy
 
-| Feature | `aido run` | `aido proxy` |
+| Feature | `AIdo run` | `AIdo proxy` |
 |---------|------------|--------------|
 | **Execution** | One-time CLI command | Continuous HTTP server |
 | **Model Selection** | From `-m` flag or auto-discovery | From request body JSON |
@@ -265,7 +267,7 @@ When making API request:
 
 ## 6. REQUEST FLOWS DETAILED
 
-### 6.1 Flow: `aido run -m aido/zen/minimax-m2.5-free "Hello"`
+### 6.1 Flow: `AIdo run -m aido/zen/minimax-m2.5-free "Hello"`
 
 ```
 CLI Input:
@@ -304,7 +306,7 @@ Processing in run.ts:
 
 ---
 
-### 6.2 Flow: `aido run "Hello"` (no -m flag)
+### 6.2 Flow: `AIdo run "Hello"` (no -m flag)
 
 ```
 CLI Input:
@@ -369,10 +371,10 @@ Processing in auto.ts (forwardAuto):
 
 | Scenario | Expected Behavior | Implementation |
 |----------|-------------------|----------------|
-| `aido run -m aido/zen/model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
-| `aido run -p zen -m model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
-| `aido run -p zen "hi"` | Tries free models, then paid, until success | ✅ Fallback loop in run() |
-| `aido run "hi"` | Uses auto-routing across providers | ✅ forwardAuto() |
+| `AIdo run -m aido/zen/model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `AIdo run -p zen -m model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `AIdo run -p zen "hi"` | Tries free models, then paid, until success | ✅ Fallback loop in run() |
+| `AIdo run "hi"` | Uses auto-routing across providers | ✅ forwardAuto() |
 
 **Model Validation** (src/run.ts lines 62-68):
 ```typescript
@@ -460,29 +462,29 @@ export function isRateLimited(key: string): boolean {
 
 ```bash
 # Direct execution (one-time)
-aido run "Hello"                    # Auto-route to best provider
-aido run -m aido/zen/big-pickle "Hello"  # Specific model (validated)
-aido run -p zen "Hello"             # Specific provider, tries free then paid
-aido run -p zen --only-free "Hello" # Only try free models
-aido run -p zen --only-paid "Hello" # Only try paid models
+AIdo run "Hello"                    # Auto-route to best provider
+AIdo run -m aido/zen/big-pickle "Hello"  # Specific model (validated)
+AIdo run -p zen "Hello"             # Specific provider, tries free then paid
+AIdo run -p zen --only-free "Hello" # Only try free models
+AIdo run -p zen --only-paid "Hello" # Only try paid models
 
 # Proxy server (continuous)
-aido proxy                          # Start proxy on port 4141
-aido stop                           # Stop proxy
+AIdo proxy                          # Start proxy on port 4141
+AIdo stop                           # Stop proxy
 
 # Model management
-aido models                         # List all models (cached 1 hour)
-aido models zen                     # List models for specific provider
-aido models --sync                  # Force refresh cache
+AIdo models                         # List all models (cached 1 hour)
+AIdo models zen                     # List models for specific provider
+AIdo models --sync                  # Force refresh cache
 
 # Key management
-aido add sk-zen-key...              # Add API key
-aido status                         # Show configured providers & rate limits
-aido clear                          # Clear all rate limits
+AIdo add sk-zen-key...              # Add API key
+AIdo status                         # Show configured providers & rate limits
+AIdo clear                          # Clear all rate limits
 
 # Hunt daemon
-aido hunt                           # Search for leaked keys
-aido hunt:stop                      # Stop hunt daemon
+AIdo hunt                           # Search for leaked keys
+AIdo hunt:stop                      # Stop hunt daemon
 ```
 
 ### 8.2 Model Name Formats
@@ -507,18 +509,18 @@ aido hunt:stop                      # Stop hunt daemon
 
 | Command | Result |
 |---------|--------|
-| `aido run -m minimax-m2.5-free "hi"` | ❌ ERROR: Unknown category/provider |
-| `aido run -m aido/zen/minimax-m2.5-free "hi"` | ✅ Uses Zen provider with that model |
-| `aido run -m aido/auto/minimax-m2.5-free "hi"` | ✅ Checks ALL providers for that model |
+| `AIdo run -m minimax-m2.5-free "hi"` | ❌ ERROR: Unknown category/provider |
+| `AIdo run -m aido/zen/minimax-m2.5-free "hi"` | ✅ Uses Zen provider with that model |
+| `AIdo run -m aido/auto/minimax-m2.5-free "hi"` | ✅ Checks ALL providers for that model |
 
 ---
 
 ## 9. FLOW DIAGRAMS
 
-### 9.1 Complete Request Flow (aido run)
+### 9.1 Complete Request Flow (AIdo run)
 
 ```
-User Input: aido run -m aido/zen/minimax-m2.5-free "Hello"
+User Input: AIdo run -m aido/zen/minimax-m2.5-free "Hello"
 
     ┌─────────────────────────────────────────────────────────┐
     │ 1. cli.ts: Parse command                                │
@@ -613,7 +615,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
                          │
                          ▼
     ┌─────────────────────────────────────────────────────────┐
-    │ 4. User runs: aido run "Hello"                          │
+    │ 4. User runs: AIdo run "Hello"                          │
     │    getFreeModels('zen')                                 │
     │    SELECT * FROM models WHERE isFree=1                  │
     └─────────────────────────────────────────────────────────┘
@@ -637,7 +639,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
 
 | Operation | When | Table |
 |-----------|------|-------|
-| Get free models | Every `aido run` | `models` (WHERE isFree=1) |
+| Get free models | Every `AIdo run` | `models` (WHERE isFree=1) |
 | Check rate limit | Before API call | `rate_limits` |
 | Check model limit | Before API call | `model_limits` |
 | Get available keys | Before API call | `.env` + `rate_limits` |
@@ -649,7 +651,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
 ### Scenario 1: User wants to use a specific free model
 
 ```bash
-aido run -m aido/zen/minimax-m2.5-free "Hello"
+AIdo run -m aido/zen/minimax-m2.5-free "Hello"
 ```
 
 **Expected**: Uses `minimax-m2.5-free` directly (from -m flag)
@@ -658,7 +660,7 @@ aido run -m aido/zen/minimax-m2.5-free "Hello"
 ### Scenario 2: User wants to use first available free model
 
 ```bash
-aido run -p zen "Hello"
+AIdo run -p zen "Hello"
 ```
 
 **Expected**: Uses first model from `getFreeModels('zen')`
@@ -667,7 +669,7 @@ aido run -p zen "Hello"
 ### Scenario 3: User wants auto-routing across providers
 
 ```bash
-aido run "Hello"
+AIdo run "Hello"
 ```
 
 **Expected**: Triggers `forwardAuto()` which tries multiple providers
@@ -676,7 +678,7 @@ aido run "Hello"
 ### Scenario 4: User wants to try free models across all providers
 
 ```bash
-aido run --auto-free "Hello"
+AIdo run --auto-free "Hello"
 ```
 
 **Expected**: Triggers `forwardAutoFree()` which loops through all providers

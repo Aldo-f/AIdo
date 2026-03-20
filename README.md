@@ -1,7 +1,9 @@
-# aido
+# AIdo
 
 Local API key rotation proxy for LLM providers.  
 Automatically rotates keys on rate limits (429). Cooldowns tracked in SQLite.
+
+> **AIdo** = **AI** + **Aldo** — Your personal AI helper for key rotation.
 
 ---
 
@@ -24,7 +26,7 @@ cd aido
 npm install
 ```
 
-### Step 2 — Make the `aido` command available
+### Step 2 — Make the `AIdo` command available
 
 **Option A: system-wide** (requires sudo)
 ```bash
@@ -60,6 +62,8 @@ systemctl --user start aido
 ### Step 3 — Verify
 
 ```bash
+AIdo --help
+# or
 aido --help
 ```
 
@@ -69,25 +73,25 @@ aido --help
 
 ```bash
 # 1. Add your Zen key
-aido add sk-yourzenkey...
+AIdo add sk-yourzenkey...
 
 # 2. Configure your tools (Claude Code + OpenCode)
-aido launch
+AIdo launch
 
 # 3. Start the proxy
-aido proxy
+AIdo proxy
 
 # 4. Test it
-aido run "what is 2+2"
+AIdo run "what is 2+2"
 ```
 
-## Free Model Discovery (New Feature)
+## Free Model Discovery
 
 The `--auto-free` flag enables automatic discovery and use of free-tier models:
 
 ```bash
 # Try free models first before falling back to paid models
-aido run "test free models" --auto-free
+AIdo run "test free models" --auto-free
 ```
 
 How it works:
@@ -107,18 +111,18 @@ Benefits:
 
 ## Commands
 
-### `aido add <key>`
+### `AIdo add <key>`
 
 Adds an API key. Provider is auto-detected from the key format.
 
 ```bash
-aido add sk-zen-key-here...
-aido add sk-ant-api03-anthropic-key...
-aido add sk-proj-openai-key...
-aido add sk-or-v1-openrouter-key...
+AIdo add sk-zen-key-here...
+AIdo add sk-ant-api03-anthropic-key...
+AIdo add sk-proj-openai-key...
+AIdo add sk-or-v1-openrouter-key...
 
 # Override detection
-aido add some-key --provider groq
+AIdo add some-key --provider groq
 ```
 
 Stored in `.env` next to the project folder:
@@ -127,25 +131,25 @@ ZEN_KEYS=key1,key2,key3
 ANTHROPIC_KEYS=key1
 ```
 
-### `aido run <prompt>`
+### `AIdo run <prompt>`
 
 Sends a prompt to a model. Useful for quick testing.
 
 ```bash
-aido run "what is 2+2"
-aido run "write a haiku" --model mimo-v2-flash-free
-aido run "explain recursion" --provider zen --stream
-aido run "test free models" --auto-free  # Try free models first
+AIdo run "what is 2+2"
+AIdo run "write a haiku" --model mimo-v2-flash-free
+AIdo run "explain recursion" --provider zen --stream
+AIdo run "test free models" --auto-free  # Try free models first
 ```
 
-### `aido models [provider]`
+### `AIdo models [provider]`
 
 Fetches available models using your key. Results cached for 1 hour.
 
 ```bash
-aido models          # all configured providers
-aido models zen      # specific provider
-aido models --sync   # ignore cache, force refresh
+AIdo models          # all configured providers
+AIdo models zen      # specific provider
+AIdo models --sync   # ignore cache, force refresh
 ```
 
 > Since the call is made with your own key, you see exactly which models your account can use.
@@ -168,12 +172,12 @@ Free models available via OpenRouter:
 | `openrouter/hunter-alpha`                    | Hunter Alpha             |
 | `openrouter/healer-alpha`                    | Healer Alpha             |
 
-### `aido proxy`
+### `AIdo proxy`
 
 Starts the proxy server on port 4141 (configurable via `PROXY_PORT` in `.env`).
 
 ```bash
-aido proxy
+AIdo proxy
 # [aido-proxy] Listening on http://localhost:4141
 ```
 
@@ -208,14 +212,14 @@ The `/v1/models` endpoint returns enriched model data with capabilities:
 - `output`: Maximum output tokens
 - `allows`: Features supported (reasoning, text, image, pdf, video)
 
-### `aido launch`
+### `AIdo launch`
 
 Configures Claude Code and/or OpenCode to use the proxy.
 
 ```bash
-aido launch                    # both
-aido launch --target claude    # Claude Code only
-aido launch --target opencode  # OpenCode only
+AIdo launch                    # both
+AIdo launch --target claude    # Claude Code only
+AIdo launch --target opencode  # OpenCode only
 ```
 
 **Claude Code** — adds to `.bashrc` / `.zshrc`:
@@ -244,12 +248,12 @@ export ANTHROPIC_API_KEY="aido-proxy"
 
 In OpenCode: `/models` → select `aido/big-pickle` or another model.
 
-### `aido status`
+### `AIdo status`
 
 Shows configured providers and any rate-limited keys.
 
 ```bash
-aido status
+AIdo status
 
 # Configured providers:
 #   zen          2 keys
@@ -259,32 +263,32 @@ aido status
 #   zen          ...gooTF  (until 14:30:00)
 ```
 
-### `aido stop`
+### `AIdo stop`
 
 Stops the running proxy server.
 
 ```bash
-aido stop
+AIdo stop
 ```
 
-### `aido hunt:stop`
+### `AIdo hunt:stop`
 
 Stops the running hunt daemon.
 
 ```bash
-aido hunt:stop
+AIdo hunt:stop
 ```
 
-### `aido hunt`
+### `AIdo hunt`
 
 Searches the internet for leaked API keys and validates them automatically.
 
 ```bash
-aido hunt                    # Search for keys (default: 3 valid keys, 60s timeout)
-aido hunt --limit 5          # Stop after 5 valid keys
-aido hunt --timeout 120      # Search for 2 minutes
-aido hunt --provider zen     # Only search for Zen keys
-aido hunt --provider anthropic  # Only search for Anthropic keys
+AIdo hunt                    # Search for keys (default: 3 valid keys, 60s timeout)
+AIdo hunt --limit 5          # Stop after 5 valid keys
+AIdo hunt --timeout 120      # Search for 2 minutes
+AIdo hunt --provider zen     # Only search for Zen keys
+AIdo hunt --provider anthropic  # Only search for Anthropic keys
 ```
 
 #### How it works
@@ -312,8 +316,8 @@ aido hunt --provider anthropic  # Only search for Anthropic keys
 
 The hunt runs in daemon mode by default — it continuously searches in the background:
 ```bash
-aido hunt --daemon           # Run continuously in background (default)
-aido hunt --daemon=false     # Run once and exit
+AIdo hunt --daemon           # Run continuously in background (default)
+AIdo hunt --daemon=false     # Run once and exit
 ```
 
 #### Requirements
@@ -329,21 +333,21 @@ GITHUB_TOKEN=ghp_xxx  # Optional: for private repo scanning
 
 ---
 
-### `aido key:validate <key>`
+### `AIdo key:validate <key>`
 
 Validates if an API key works.
 
 ```bash
-aido key:validate sk-xxx...
-aido key:validate sk-xxx... --provider zen
+AIdo key:validate sk-xxx...
+AIdo key:validate sk-xxx... --provider zen
 ```
 
-### `aido clear`
+### `AIdo clear`
 
 Clears all rate limits, making all keys available again.
 
 ```bash
-aido clear
+AIdo clear
 ```
 
 ---
@@ -437,3 +441,16 @@ git commit -m "init"
 
 # .env and aido.db are in .gitignore — never committed
 ```
+
+---
+
+## Command Naming
+
+The command can be written as either `AIdo` or `aido` — both work:
+
+```bash
+AIdo run "hello"    # Uppercase I (Aldo's AI helper)
+aido run "hello"    # Lowercase i (traditional)
+```
+
+The name **AIdo** represents **AI** + **Aldo** — your personal AI helper for managing API keys and model routing.

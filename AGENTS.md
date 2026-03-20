@@ -1,12 +1,14 @@
-# aido KNOWLEDGE BASE
+# AIdo KNOWLEDGE BASE
 
-**Generated:** 2026-03-19
-**Commit:** 75af5de
+**Generated:** 2026-03-20
+**Version:** 2.1.1
 **Branch:** main
 
 ## OVERVIEW
 
-Local API key rotation proxy for LLM providers. Automatically rotates keys on rate limits (429). Cooldowns tracked in SQLite.
+AIdo is a local API key rotation proxy for LLM providers. Automatically rotates keys on rate limits (429). Cooldowns tracked in SQLite.
+
+> **AIdo** = **AI** + **Aldo** — Aldo's personal AI helper.
 
 ### Key Features
 - **Automatic Key Rotation**: Switches to next available key when rate limited
@@ -80,17 +82,18 @@ aido/
 - Model IDs duplicated in /v1/models response (original + prefixed) for OpenCode validation
 - Provider detection via `owned_by` field from upstream API
 - Auto mode falls through on 429 to next provider
-- All models saved to DB with `isFree` flag (1 for free, 0 for paid)
+- All models saved to DB with `is_free` flag (1 for free, 0 for paid)
+- **AIdo sync** command clears limits and refreshes models with [free] tags
 
 ## COMMANDS
 
 ```bash
-npm test                    # Run tests (162)
+npm test                    # Run tests (198)
 npm run proxy               # Start proxy
 ./aido add <key>           # Add API key
-./aido run "test" --auto-free  # Use free models first
-./aido launch --target opencode  # Configure OpenCode
-./aido hunt                # Start hunt daemon
+AIdo run "test" --auto-free  # Use free models first
+AIdo launch --target opencode  # Configure OpenCode
+AIdo hunt                  # Start hunt daemon
 ```
 
 ## DATABASE SCHEMA
