@@ -54,7 +54,7 @@ aido/
 
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| cli.ts | CLI | src/cli.ts | Commands: add, run (with --auto-free), models, proxy, launch, status, clear, stop, hunt |
+| cli.ts | CLI | src/cli.ts | Commands: add, run (with --only-free/--only-paid), models, proxy, launch, status, clear, sync, stop, hunt |
 | rotator.ts | Module | src/rotator.ts | Key loading, rotation, cooldowns, model-specific rate limiting |
 | router.ts | Module | src/models/router.ts | Parses aido/zen/big-pickle → provider |
 | proxy.ts | Module | src/proxy.ts | HTTP server, forwards requests |
@@ -88,10 +88,10 @@ aido/
 ## COMMANDS
 
 ```bash
-npm test                    # Run tests (198)
+npm test                    # Run tests (208)
 npm run proxy               # Start proxy
 ./aido add <key>           # Add API key
-AIdo run "test" --auto-free  # Use free models first
+AIdo run "test" --provider zen --only-free  # Use free models only
 AIdo launch --target opencode  # Configure OpenCode
 AIdo hunt                  # Start hunt daemon
 ```

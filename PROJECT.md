@@ -675,10 +675,10 @@ AIdo run "Hello"
 **Expected**: Triggers `forwardAuto()` which tries multiple providers
 **Check**: src/run.ts line 35-63 - provider === 'auto' branch
 
-### Scenario 4: User wants to try free models across all providers
+### Scenario 4: User wants to try only free models across all providers
 
 ```bash
-AIdo run --auto-free "Hello"
+AIdo run --provider zen --only-free "Hello"
 ```
 
 **Expected**: Triggers `forwardAutoFree()` which loops through all providers

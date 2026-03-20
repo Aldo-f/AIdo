@@ -87,25 +87,18 @@ AIdo run "what is 2+2"
 
 ## Free Model Discovery
 
-The `--auto-free` flag enables automatic discovery and use of free-tier models:
+Use `--only-free` to only use free models, or `--only-paid` to only use paid models:
 
 ```bash
-# Try free models first before falling back to paid models
-AIdo run "test free models" --auto-free
+# Only use free models
+AIdo run "test free models" --provider zen --only-free
+
+# Only use paid models  
+AIdo run "use best model" --provider zen --only-paid
+
+# Use both free and paid (default)
+AIdo run "hello" --provider zen
 ```
-
-How it works:
-1. Automatically queries each configured provider's API for available models
-2. Identifies which models are free tier (using provider-specific logic)
-3. Caches discovered free models in SQLite (1-hour TTL)
-4. Tries all free models across all providers before falling back to paid models
-5. Requires zero manual configuration - just use `--auto-free`
-
-Benefits:
-- Always uses available free models when possible
-- Automatically adapts to provider changes
-- Falls back to paid models only when necessary
-- No manual model selection required
 
 ---
 
@@ -139,7 +132,7 @@ Sends a prompt to a model. Useful for quick testing.
 AIdo run "what is 2+2"
 AIdo run "write a haiku" --model mimo-v2-flash-free
 AIdo run "explain recursion" --provider zen --stream
-AIdo run "test free models" --auto-free  # Try free models first
+AIdo run "test free models" --provider zen --only-free  # Only use free models
 ```
 
 ### `AIdo models [provider]`

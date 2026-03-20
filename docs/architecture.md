@@ -85,9 +85,9 @@ AIdo uses priority chains to determine which providers to try:
 
 ### Free Model Priority
 
-When using `--auto-free` flag or free model discovery:
-1. Query all providers for free models
-2. Try free models across all providers before falling back to paid models
+When using `--only-free` flag:
+1. Filter to only free models for the provider
+2. Try free models until one succeeds
 3. Skip rate-limited models using `model_limits` table
 
 ### Model Naming
