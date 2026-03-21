@@ -1,6 +1,6 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getRotator, loadKeysForProvider, KeyRotator } from './rotator.js';
-import { logRequest as dbLogRequest, getFreeModels } from './db.js';
+import { logRequest as dbLogRequest, getFreeModels, getAllModels } from './db.js';
 import { logRequest as fileLogRequest } from './logger.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { PRIORITIES } from './priorities.js';
@@ -11,6 +11,27 @@ export const AUTO_PRIORITY = PRIORITIES.auto;
 export type PriorityType = 'auto' | 'cloud' | 'local';
 
 const FATAL_STATUSES = new Set([400, 401, 403, 404]);
+
+function getModelsToTry(provider: Provider, specificModel?: string, defaultModel?: string): string[] {
+  const allModels = getAllModels(provider);
+  const freeModels = getFreeModels(provider);
+  
+  if (allModels.length === 0) {
+    return defaultModel ? [defaultModel] : [];
+  }
+  
+  if (specificModel && specificModel !== 'auto') {
+    const hasModel = allModels.some(m => m.id === specificModel);
+    if (hasModel) {
+      return [specificModel, ...allModels.filter(m => m.id !== specificModel).map(m => m.id)];
+    }
+    return allModels.map(m => m.id);
+  }
+  
+  const freeModelIds = freeModels.map(m => m.id);
+  const paidModelIds = allModels.filter(m => !m.isFree).map(m => m.id);
+  return [...freeModelIds, ...paidModelIds];
+}
 
 export interface AutoResult {
   status: number;
@@ -36,7 +57,7 @@ export async function forwardAuto(
   const logPrefix = specificModel ? `[auto/${specificModel}]` : '[auto]';
   console.log(`${logPrefix} Starting request (priority: ${priorityType})`);
 
-  for (const { provider, model } of priorities) {
+  for (const { provider, model: defaultModel } of priorities) {
     const rotator = getRotator(provider);
     const availableKeys = rotator.availableKeys();
 
@@ -46,34 +67,8 @@ export async function forwardAuto(
       continue;
     }
 
-    let modelToTry = model;
-    if (specificModel && specificModel !== 'auto') {
-      const freeModels = getFreeModels(provider);
-      const hasModel = freeModels.some(m => m.id === specificModel);
-      if (!hasModel && specificModel !== model) {
-        tried.push(`${provider}(${specificModel} not found)`);
-        console.log(`${logPrefix}   ${provider}: ${specificModel} not available`);
-        continue;
-      }
-      modelToTry = specificModel;
-    }
-
-    console.log(`${logPrefix}   ${provider}: trying ${modelToTry} with ${availableKeys.length} key(s)...`);
     const config = PROVIDER_CONFIGS[provider];
     const isOllama = config.nativeFormat === true;
-
-    let upstreamBody = body;
-    try {
-      const parsed = JSON.parse(body);
-      if (priorityType === 'cloud' || priorityType === 'local') {
-        parsed.model = modelToTry;
-      } else if (!parsed.model || parsed.model === 'auto') {
-        parsed.model = modelToTry;
-      }
-      upstreamBody = JSON.stringify(parsed);
-    } catch {}
-
-    if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
 
     let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
     if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
@@ -81,52 +76,74 @@ export async function forwardAuto(
     }
     const url = `${config.baseUrl}${upstreamPath}`;
 
-    let success = false;
-
-    for (const key of availableKeys) {
-      const startTime = Date.now();
-      const baseHeaders = { 'content-type': 'application/json' };
-      const result = await tryKey(provider, key, modelToTry, url, method, baseHeaders, upstreamBody);
-
-      const duration = Date.now() - startTime;
-      const rawBody = result.response ? await result.response.text() : '';
-      const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
-      fileLogRequest({ provider, model: modelToTry, key, status: result.response?.status ?? 0, duration, responseSize: rawBody.length });
-
-      if (result.status === 'rate_limited') {
-        tried.push(`${provider}/${modelToTry}(429 on ...${key.slice(-8)})`);
-        console.log(`[auto] ${provider}/${modelToTry} rate limited (key ...${key.slice(-8)}) → trying next key`);
-        continue;
-      }
-
-      if (result.status === 'invalid_key') {
-        tried.push(`${provider}/${modelToTry}(invalid key ...${key.slice(-8)})`);
-        console.log(`[auto] ${provider}/${modelToTry} invalid key (...${key.slice(-8)}) → trying next key`);
-        continue;
-      }
-
-      if (result.status === 'network_error') {
-        tried.push(`${provider}/${modelToTry}(network error)`);
-        console.log(`[auto] ${provider}/${modelToTry} network error → trying next key`);
-        continue;
-      }
-
-      if (result.status === 'fatal') {
-        tried.push(`${provider}/${modelToTry}(${result.response?.status})`);
-        console.log(`[auto] ${provider}/${modelToTry} → ${result.response?.status}, trying next key`);
-        continue;
-      }
-
-      if (result.status === 'success' && result.response) {
-        const totalTime = Date.now() - overallStartTime;
-        console.log(`[auto] ✓ ${provider}/${modelToTry} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
-        const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
-        result.response.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
-        return { status: result.response.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: modelToTry };
-      }
+    const modelsToTry = getModelsToTry(provider, specificModel, defaultModel);
+    if (modelsToTry.length === 0) {
+      tried.push(`${provider}(no models)`);
+      console.log(`${logPrefix}   ${provider}: no models available`);
+      continue;
     }
 
-    console.log(`[auto] ${provider}: all keys exhausted for ${modelToTry}`);
+    console.log(`${logPrefix}   ${provider}: trying ${modelsToTry.length} model(s) with ${availableKeys.length} key(s)...`);
+
+    for (const modelToTry of modelsToTry) {
+      let upstreamBody = body;
+      try {
+        const parsed = JSON.parse(body);
+        if (priorityType === 'cloud' || priorityType === 'local') {
+          parsed.model = modelToTry;
+        } else if (!parsed.model || parsed.model === 'auto') {
+          parsed.model = modelToTry;
+        }
+        upstreamBody = JSON.stringify(parsed);
+      } catch {}
+
+      if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
+
+      for (const key of availableKeys) {
+        const startTime = Date.now();
+        const baseHeaders = { 'content-type': 'application/json' };
+        const result = await tryKey(provider, key, modelToTry, url, method, baseHeaders, upstreamBody);
+
+        const duration = Date.now() - startTime;
+        const rawBody = result.response ? await result.response.text() : '';
+        const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
+        fileLogRequest({ provider, model: modelToTry, key, status: result.response?.status ?? 0, duration, responseSize: rawBody.length });
+
+        if (result.status === 'rate_limited') {
+          tried.push(`${provider}/${modelToTry}(429 on ...${key.slice(-8)})`);
+          console.log(`[auto] ${provider}/${modelToTry} rate limited (key ...${key.slice(-8)}) → trying next key`);
+          continue;
+        }
+
+        if (result.status === 'invalid_key') {
+          tried.push(`${provider}/${modelToTry}(invalid key ...${key.slice(-8)})`);
+          console.log(`[auto] ${provider}/${modelToTry} invalid key (...${key.slice(-8)}) → trying next key`);
+          continue;
+        }
+
+        if (result.status === 'network_error') {
+          tried.push(`${provider}/${modelToTry}(network error)`);
+          console.log(`[auto] ${provider}/${modelToTry} network error → trying next key`);
+          continue;
+        }
+
+        if (result.status === 'fatal') {
+          tried.push(`${provider}/${modelToTry}(${result.response?.status})`);
+          console.log(`[auto] ${provider}/${modelToTry} → ${result.response?.status}, trying next key`);
+          continue;
+        }
+
+        if (result.status === 'success' && result.response) {
+          const totalTime = Date.now() - overallStartTime;
+          console.log(`[auto] ✓ ${provider}/${modelToTry} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
+          const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
+          result.response.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
+          return { status: result.response.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: modelToTry };
+        }
+      }
+
+      console.log(`[auto] ${provider}: all keys exhausted for ${modelToTry}`);
+    }
   }
 
   const totalTime = Date.now() - overallStartTime;

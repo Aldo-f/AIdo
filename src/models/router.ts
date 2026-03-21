@@ -87,7 +87,7 @@ export function routeAidoModel(pathname: string): RouteResult {
         };
       }
       return {
-        provider: 'zen',
+        provider: 'auto',
         model: parsed.model,
         upstreamPath: '/v1/chat/completions',
         isAuto: true,
@@ -95,8 +95,8 @@ export function routeAidoModel(pathname: string): RouteResult {
       };
     }
     return {
-      provider: CLOUD_PRIORITY[0].provider,
-      model: CLOUD_PRIORITY[0].model,
+      provider: 'auto',
+      model: 'auto',
       upstreamPath: '/v1/chat/completions',
       isAuto: true,
       priorityType: 'cloud',

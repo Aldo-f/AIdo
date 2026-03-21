@@ -20,25 +20,28 @@ describe('routeAidoModel', () => {
   });
 
   describe('cloud category', () => {
-    it('routes aido/cloud to zen with big-pickle (default)', () => {
+    it('routes aido/cloud to auto-routing with cloud priority', () => {
       const result = routeAidoModel('aido/cloud');
-      expect(result.provider).toBe('zen');
-      expect(result.model).toBe('big-pickle');
+      expect(result.provider).toBe('auto');
+      expect(result.model).toBe('auto');
       expect(result.isAuto).toBe(true);
+      expect(result.priorityType).toBe('cloud');
     });
 
-    it('routes aido/cloud/big-pickle to zen', () => {
+    it('routes aido/cloud/big-pickle to auto-routing with specified model', () => {
       const result = routeAidoModel('aido/cloud/big-pickle');
-      expect(result.provider).toBe('zen');
+      expect(result.provider).toBe('auto');
       expect(result.model).toBe('big-pickle');
       expect(result.isAuto).toBe(true);
+      expect(result.priorityType).toBe('cloud');
     });
 
-    it('routes aido/cloud/gpt-4o-mini to zen with specified model', () => {
+    it('routes aido/cloud/gpt-4o-mini to auto-routing with specified model', () => {
       const result = routeAidoModel('aido/cloud/gpt-4o-mini');
-      expect(result.provider).toBe('zen');
+      expect(result.provider).toBe('auto');
       expect(result.model).toBe('gpt-4o-mini');
       expect(result.isAuto).toBe(true);
+      expect(result.priorityType).toBe('cloud');
     });
   });
 
@@ -159,11 +162,12 @@ describe('cloud model detection', () => {
     expect(result.priorityType).toBe('local');
   });
 
-  it('routes unknown cloud model to zen', async () => {
+  it('routes unknown cloud model to auto-routing with cloud priority', async () => {
     const { routeAidoModel, refreshCloudModels } = await import('../src/models/router.js');
     await refreshCloudModels();
     const result = routeAidoModel('aido/cloud/gpt-4o-mini');
-    expect(result.provider).toBe('zen');
+    expect(result.provider).toBe('auto');
     expect(result.priorityType).toBe('cloud');
+    expect(result.isAuto).toBe(true);
   });
 });
