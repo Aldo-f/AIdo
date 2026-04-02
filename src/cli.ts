@@ -91,7 +91,11 @@ const providers: Provider[] = providerArg
         console.log(`\n[${provider}] No keys configured — skipping.`);
         continue;
       }
-      await showModels(provider, keys[0], opts.sync);
+      try {
+        await showModels(provider, keys[0], opts.sync);
+      } catch (err) {
+        console.error(`\n[${provider}] Error: ${(err as Error).message}`);
+      }
     }
   });
 
