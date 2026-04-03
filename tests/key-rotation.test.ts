@@ -371,29 +371,25 @@ describe('tryWithKeyRotation', () => {
     expect(result.key).toBe('sk-key1');
   });
 
-  it('tries next key on rate limit', async () => {
-    // safeFetch retries 429 internally (3 retries = 4 total attempts per key)
-    // After all retries exhausted, tryKey returns rate_limited and rotation tries next key
-    const mockFetch = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' }))
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' }))
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' }))
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' }))
-      .mockResolvedValueOnce(mockResponse(200, { choices: [] }));
+  it('throws immediately on rate limit (model exhausted, not per-key)', async () => {
+    // Rate limiting is per model, not per key.
+    // If first key gets 429, all keys will too for the same model.
+    // So we throw immediately so run.ts can try a different model.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse(429, { error: 'rate limited' }));
 
     process.env.OPENCODE_KEYS = 'sk-key1,sk-key2';
-    const result = await tryWithKeyRotation(
+
+    await expect(tryWithKeyRotation(
       'opencode',
       'big-pickle',
       'https://opencode.ai/zen/v1/chat/completions',
       'POST',
       { 'content-type': 'application/json' },
       JSON.stringify({ model: 'big-pickle', messages: [] })
-    );
+    )).rejects.toThrow('Model big-pickle is rate limited');
 
-    expect(result.res.status).toBe(200);
-    expect(result.key).toBe('sk-key2');
-    expect(mockFetch).toHaveBeenCalledTimes(5);
+    // Only 1 fetch call - we don't waste time trying other keys for same model
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('tries next key on invalid key', async () => {
@@ -447,7 +443,7 @@ describe('tryWithKeyRotation', () => {
       'POST',
       { 'content-type': 'application/json' },
       JSON.stringify({ model: 'big-pickle', messages: [] })
-    )).rejects.toThrow('All keys for opencode failed or are rate limited');
+    )).rejects.toThrow('Model big-pickle is rate limited');
   });
 
   it('throws when no keys are available', async () => {
@@ -478,11 +474,9 @@ describe('tryWithKeyRotation', () => {
     )).rejects.toThrow('opencode returned 400');
   });
 
-  it('tries all keys before giving up', async () => {
-    // safeFetch retries 429 internally (3 retries = 4 total attempts per key)
-    // After all retries exhausted, tryKey returns rate_limited and rotation tries next key
-    const mockFetch = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValue(mockResponse(429, { error: 'rate limited' }));
+  it('throws immediately when all keys would be rate limited', async () => {
+    // Rate limiting is per model - if first key gets 429, model is exhausted
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse(429, { error: 'rate limited' }));
 
     process.env.OPENCODE_KEYS = 'sk-key1,sk-key2,sk-key3';
 
@@ -493,70 +487,32 @@ describe('tryWithKeyRotation', () => {
       'POST',
       { 'content-type': 'application/json' },
       JSON.stringify({ model: 'big-pickle', messages: [] })
-    )).rejects.toThrow('All keys for opencode failed or are rate limited');
+    )).rejects.toThrow('Model big-pickle is rate limited');
 
-    // 3 keys × 4 attempts each = 12 total
-    expect(mockFetch).toHaveBeenCalledTimes(12);
+    // Only 1 fetch call - we don't waste time trying other keys
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('handles mixed failure types (network + rate limit + success)', async () => {
-    // Note: safeFetch retries on network errors (3 retries) and 429s (3 retries)
-    // sk-key1: network error → 4 attempts total → gives up → rotates
-    // sk-key2: 429 → 4 attempts total → gives up → rotates
-    // sk-key3: 200 → success
+    // sk-key1: network error → try next key
+    // sk-key2: 429 → model exhausted → throw
+    // The caller (run.ts) should then try a different model
     const mockFetch = vi.spyOn(globalThis, 'fetch')
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 attempt 1: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 attempt 2: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 attempt 3: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 attempt 4: network error → gives up
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 attempt 1: rate limited
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 attempt 2: rate limited
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 attempt 3: rate limited
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 attempt 4: rate limited → gives up
-      .mockResolvedValueOnce(mockResponse(200, { choices: [] })); // sk-key3: success
+      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1: network error
+      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })); // sk-key2: rate limited → model exhausted
 
     process.env.OPENCODE_KEYS = 'sk-key1,sk-key2,sk-key3';
-    const result = await tryWithKeyRotation(
+
+    await expect(tryWithKeyRotation(
       'opencode',
       'big-pickle',
       'https://opencode.ai/zen/v1/chat/completions',
       'POST',
       { 'content-type': 'application/json' },
       JSON.stringify({ model: 'big-pickle', messages: [] })
-    );
+    )).rejects.toThrow('Model big-pickle is rate limited');
 
-    expect(result.res.status).toBe(200);
-    expect(result.key).toBe('sk-key3');
-    expect(mockFetch).toHaveBeenCalledTimes(9);
-  });
-
-  it('handles mixed failure types (network + rate limit + success)', async () => {
-    // Note: safeFetch retries on network errors (3 retries) and 429s (3 retries)
-    const mockFetch = vi.spyOn(globalThis, 'fetch')
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 first attempt: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 retry 1: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 retry 2: network error
-      .mockRejectedValueOnce(new Error('fetch failed')) // sk-key1 retry 3: network error → give up
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 attempt 1: rate limited
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 retry 1
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 retry 2
-      .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' })) // sk-key2 retry 3 → give up
-      .mockResolvedValueOnce(mockResponse(200, { choices: [] })); // sk-key3: success
-
-    process.env.OPENCODE_KEYS = 'sk-key1,sk-key2,sk-key3';
-    const result = await tryWithKeyRotation(
-      'opencode',
-      'big-pickle',
-      'https://opencode.ai/zen/v1/chat/completions',
-      'POST',
-      { 'content-type': 'application/json' },
-      JSON.stringify({ model: 'big-pickle', messages: [] })
-    );
-
-    expect(result.res.status).toBe(200);
-    // sk-key1 fails (4 network errors), sk-key2 rate limited (4 × 429), sk-key3 succeeds
-    expect(result.key).toBe('sk-key3');
-    expect(mockFetch).toHaveBeenCalledTimes(9);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 

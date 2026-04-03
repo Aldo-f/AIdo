@@ -75,32 +75,81 @@ export async function tryWithKeyRotation(
     throw new Error(`No API keys available for ${provider}`);
   }
 
-  for (const key of availableKeys) {
-    const result = await tryKey(provider, key, model, url, method, baseHeaders, body);
+  // Rate limiting is per model, not per key.
+  // If the first key gets 429, all other keys will too for the same model.
+  // So we only try ONE key per model attempt.
+  const key = availableKeys[0];
+  const result = await tryKey(provider, key, model, url, method, baseHeaders, body);
 
-    if (result.status === 'success' && result.response) {
-      return { res: result.response, key };
-    }
+  if (result.status === 'success' && result.response) {
+    return { res: result.response, key };
+  }
 
-    if (result.status === 'rate_limited') {
-      console.log(`[rotation] ${provider}/${model} rate limited, trying next key`);
-      continue;
-    }
+  if (result.status === 'rate_limited') {
+    console.log(`[rotation] ${provider}/${model} rate limited (model exhausted)`);
+    throw new Error(`Model ${model} is rate limited`);
+  }
 
-    if (result.status === 'invalid_key') {
-      console.log(`[rotation] ${provider}: key ...${key.slice(-8)} invalid, trying next`);
-      continue;
+  if (result.status === 'invalid_key') {
+    console.log(`[rotation] ${provider}: key ...${key.slice(-8)} invalid, trying next`);
+    rotator.markLimited(key, 30 * 24 * 60 * 60);
+    // Try remaining keys for this model
+    for (const nextKey of availableKeys.slice(1)) {
+      const nextResult = await tryKey(provider, nextKey, model, url, method, baseHeaders, body);
+      if (nextResult.status === 'success' && nextResult.response) {
+        return { res: nextResult.response, key: nextKey };
+      }
+      if (nextResult.status === 'rate_limited') {
+        console.log(`[rotation] ${provider}/${model} rate limited (model exhausted)`);
+        throw new Error(`Model ${model} is rate limited`);
+      }
+      if (nextResult.status === 'invalid_key') {
+        console.log(`[rotation] ${provider}: key ...${nextKey.slice(-8)} invalid, trying next`);
+        continue;
+      }
+      if (nextResult.status === 'network_error') {
+        console.log(`[rotation] ${provider}: key ...${nextKey.slice(-8)} network error: ${nextResult.error}`);
+        continue;
+      }
+      if (nextResult.status === 'fatal' && nextResult.response) {
+        const errText = await nextResult.response.text();
+        throw new Error(`${provider} returned ${nextResult.response.status}: ${errText}`);
+      }
     }
+    throw new Error(`All keys for ${provider} failed or are rate limited`);
+  }
 
-    if (result.status === 'network_error') {
-      console.log(`[rotation] ${provider}: key ...${key.slice(-8)} network error: ${result.error}`);
-      continue;
+  if (result.status === 'network_error') {
+    console.log(`[rotation] ${provider}: key ...${key.slice(-8)} network error: ${result.error}`);
+    // Try remaining keys for this model
+    for (const nextKey of availableKeys.slice(1)) {
+      const nextResult = await tryKey(provider, nextKey, model, url, method, baseHeaders, body);
+      if (nextResult.status === 'success' && nextResult.response) {
+        return { res: nextResult.response, key: nextKey };
+      }
+      if (nextResult.status === 'rate_limited') {
+        console.log(`[rotation] ${provider}/${model} rate limited (model exhausted)`);
+        throw new Error(`Model ${model} is rate limited`);
+      }
+      if (nextResult.status === 'invalid_key') {
+        console.log(`[rotation] ${provider}: key ...${nextKey.slice(-8)} invalid, trying next`);
+        continue;
+      }
+      if (nextResult.status === 'network_error') {
+        console.log(`[rotation] ${provider}: key ...${nextKey.slice(-8)} network error: ${nextResult.error}`);
+        continue;
+      }
+      if (nextResult.status === 'fatal' && nextResult.response) {
+        const errText = await nextResult.response.text();
+        throw new Error(`${provider} returned ${nextResult.response.status}: ${errText}`);
+      }
     }
+    throw new Error(`All keys for ${provider} failed or are rate limited`);
+  }
 
-    if (result.status === 'fatal' && result.response) {
-      const errText = await result.response.text();
-      throw new Error(`${provider} returned ${result.response.status}: ${errText}`);
-    }
+  if (result.status === 'fatal' && result.response) {
+    const errText = await result.response.text();
+    throw new Error(`${provider} returned ${result.response.status}: ${errText}`);
   }
 
   throw new Error(`All keys for ${provider} failed or are rate limited`);

@@ -176,19 +176,24 @@ describe('run with specific provider', () => {
 
     await run('Say hi', { provider: 'opencode' });
 
+    // big-pickle gets 429 (1 fetch) → model exhausted → try nemotron (1 fetch → 200)
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('handles rate limiting gracefully', async () => {
+    // Rate limiting is per model - if big-pickle gets 429, model is exhausted
+    // run.ts should then try other free models
     const mockFetch = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockResponse(429, { error: 'rate limited' }))
       .mockResolvedValueOnce(mockResponse(200, { choices: [{ message: { content: 'Hello!' } }] }));
 
     process.env.OPENCODE_KEYS = 'sk-key1,sk-key2';
     saveModel('opencode', 'big-pickle', 'big-pickle', 1);
+    saveModel('opencode', 'nemotron', 'nemotron', 1);
 
-    await run('Say hi', { provider: 'opencode', model: 'big-pickle' });
+    await run('Say hi', { provider: 'opencode' });
 
+    // big-pickle gets 429 (1 fetch) → try nemotron (1 fetch → 200)
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
