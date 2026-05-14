@@ -1,9 +1,9 @@
 import Exa from 'exa-js';
-import { PROVIDER_CONFIGS, detectProvider, type Provider } from './detector.ts';
-import { addKeyToEnv } from './env.ts';
-import { markSourceSearched, isSourceSearchedRecently, cleanOldSearchedSources } from './db.ts';
-import { scanRepoWithGitleaks, type FoundSecret } from './hunt-gitleaks.ts';
-import { safeFetch } from './safe-fetch.ts';
+import { PROVIDER_CONFIGS, detectProvider, type Provider } from './detector.js';
+import { addKeyToEnv } from './env.js';
+import { markSourceSearched, isSourceSearchedRecently, cleanOldSearchedSources } from './db.js';
+import { scanRepoWithGitleaks, type FoundSecret } from './hunt-gitleaks.js';
+import { safeFetch } from './safe-fetch.js';
 import { ALL_PROVIDERS } from './http-utils.js';
 import fs from 'fs';
 import path from 'path';

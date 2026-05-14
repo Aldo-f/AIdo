@@ -11,6 +11,7 @@ import { showModels } from './models.js';
 import { loadKeysForProvider, resetRotators } from './rotator.js';
 import { readPid, deletePid, isStale } from './daemon.js';
 import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
+import { swapOpenCodeZenKey } from './key-swap.js';
 import { forwardAutoFree } from './auto.js';
 import { ALL_PROVIDERS } from './http-utils.js';
 
@@ -280,6 +281,18 @@ program
       console.log('✓ Key is valid');
     } else {
       console.log('✗ Key is invalid');
+    }
+  });
+
+// ─── key:swap ────────────────────────────────────────────────────────
+program
+  .command('key:swap')
+  .description('Swap OpenCode Zen key with working one from AIdo .env')
+  .action(async () => {
+    const result = await swapOpenCodeZenKey();
+    console.log(result.message);
+    if (result.workingKey && result.updated) {
+      console.log(`[key:swap] ✓ Updated with key ending in ...${result.workingKey.slice(-8)}`);
     }
   });
 
