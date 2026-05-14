@@ -1,0 +1,19 @@
+package.json
+  s_71556a60a00a0c::t_a0fa036ba41c9b 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "2914a6dcf547cf91cea5678628b66e42a1a39ded",
+  "prompts": {},
+  "sessions": {
+    "s_71556a60a00a0c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_2017a0d15ffeYWRO6aUbxLVLkm",
+        "model": "unknown"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>"
+    }
+  }
+}
